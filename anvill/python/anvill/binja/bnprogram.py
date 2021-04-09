@@ -198,9 +198,9 @@ class BNProgram(Program):
             redirection_dest = reader.read32() if is_32_bit else reader.read64()
 
             # Get the variable defined at the dest address
-            func_location = self._bv.get_data_var_at(function_thunk.start)
+            func_location = self._bv.get_data_var_at(thunk_va)
             if not func_location:
-                print("anvill: No variable defined for {:x}".format(function_thunk.start))
+                print("anvill: No variable defined for rva {:x}".format(function_thunk.start))
                 continue
 
             # We should only have one caller

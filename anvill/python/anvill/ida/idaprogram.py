@@ -208,25 +208,29 @@ class IDAProgram(Program):
         self.add_symbol(address, _function_name(address))
         return func
 
-
     def _init_ctrl_flow_redirections(self):
         """Initializes the control flow redirections using function thunks"""
 
-        # We only support the ELF format for now
-        inf = ida_idaapi.get_inf_structure()
-        if inf.filetype != ida_ida.f_ELF:
-            return
-
         # List the function thunks first
         input_file_path = ida_nalt.get_input_file_path()
-        image_parser = create_elf_image_parser(input_file_path)
+
+        inf = ida_idaapi.get_inf_structure()
+        if inf.filetype == ida_ida.f_ELF:
+            image_parser = create_elf_image_parser(input_file_path)
+
+        elif inf.filetype == ida_ida.f_PE:
+            image_parser = create_pe_image_parser(input_file_path)
+
+        else:
+            return
+
         function_thunk_list = image_parser.get_function_thunk_list()
 
         # Go through each function thunk, and look at its cross references; there
         # should always be only one user, which is the wrapper around the imported
         # function
         #
-        # Note that the __libc_start_main # thunk does not need redirection since
+        # Note that the __libc_start_main thunk does not need redirection since
         # it's called directly without any wrapper function from the module entry
         # point
         is_32_bit = image_parser.get_image_bitness() == 32
@@ -237,14 +241,31 @@ class IDAProgram(Program):
 
             thunk_va = ida_nalt.get_imagebase() + function_thunk.start
 
-            redirection_dest = (
-                ida_bytes.get_wide_dword(thunk_va)
-                if is_32_bit
-                else ida_bytes.get_qword(thunk_va)
-            )
+            redirection_dest: int = 0
+            caller_address: int = 0
 
-            caller_address = ida_xref.get_first_cref_to(redirection_dest)
+            if ida_bytes.is_loaded(thunk_va):
+                redirection_dest = (
+                    ida_bytes.get_wide_dword(thunk_va)
+                    if is_32_bit
+                    else ida_bytes.get_qword(thunk_va)
+                )
+
+                caller_address = ida_xref.get_first_cref_to(redirection_dest)
+
+            else:
+                redirection_dest = thunk_va
+                caller_address = ida_xref.get_first_dref_to(redirection_dest)
+
             if caller_address == ida_idaapi.BADADDR:
+                print(
+                    "Control flow redirection failed for {} at {:x} => {:x}".format(
+                        function_thunk.name,
+                        function_thunk.start,
+                        thunk_va,
+                    )
+                )
+
                 continue
 
             redirection_source = idc.get_func_attr(caller_address, idc.FUNCATTR_START)

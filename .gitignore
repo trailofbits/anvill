@@ -50,3 +50,9 @@ VERSION
 #do not commit decrypted binja/license
 ci/license.txt
 ci/BinaryNinja-headless.zip
+
+#eclipse
+.cproject
+.project
+.settings
+
