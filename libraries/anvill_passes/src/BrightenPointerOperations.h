@@ -93,11 +93,12 @@ class PointerLifter
   // calling visit.
   std::pair<llvm::Value *, bool> visitInferInst(llvm::Instruction *inst, llvm::Type *inferred_type);
   std::pair<llvm::Value *, bool> visitInstruction(llvm::Instruction &I);
-  std::pair<llvm::Value *, bool>
-  visitBinaryOperator(llvm::BinaryOperator &inst);
+  std::pair<llvm::Value *, bool> visitBinaryOperator(llvm::BinaryOperator &inst);
+
+  std::pair<llvm::Value *, bool> createCast(llvm::Value* inst, llvm::Type* dest_ty, llvm::IRBuilder<>& IR);
 
   llvm::Value *GetIndexedPointer(llvm::IRBuilder<> &ir, llvm::Value *address,
-                                 llvm::Value *offset, llvm::Type *t) const;
+                                 llvm::Value *offset, llvm::Type *t);
 
   // Driver method
   void LiftFunction(llvm::Function &func);
@@ -113,15 +114,17 @@ class PointerLifter
   std::unordered_map<llvm::Instruction *, llvm::Value *> rep_map;
   std::unordered_map<llvm::Instruction *, bool> dead_inst;
 
+  std::unordered_map<llvm::Value *, std::unordered_map<llvm::Type*, llvm::Value *>> equiv_cache;
+
   // Whether or not progress has been made, e.g. a new type was inferred.
   bool made_progress{false};
 
   llvm::Function *const func;
   llvm::Module *const mod;
   llvm::LLVMContext &context;
-  llvm::IntegerType *const i32_ty;
-  llvm::IntegerType *const i8_ty;
-  llvm::PointerType *const i8_ptr_ty;
+  llvm::IntegerType * i32_ty;
+  llvm::IntegerType * i8_ty;
+  llvm::PointerType * i8_ptr_ty;
   const llvm::DataLayout &dl;
 };
 

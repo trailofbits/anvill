@@ -44,7 +44,6 @@ bool PointerLifterPass::runOnFunction(llvm::Function &f) {
   // f.print(llvm::errs(), nullptr);
   PointerLifter lifter(&f, max_gas);
   lifter.LiftFunction(f);
-
   // f.print(llvm::errs(), nullptr);
   // TODO (Carson) have an analysis function which determines modifications
   // Then use lift function to run those modifications
@@ -68,10 +67,23 @@ llvm::Value *PointerLifter::getPointerToValue(llvm::IRBuilder<> &ir,
                                               llvm::Value *val,
                                               llvm::Type *dest_type) {
 
-  // is the value another instruction? Visit it
+  return createCast(val, dest_type, ir).first;
+}
 
-  llvm::Value *ptr_cast = ir.CreateBitOrPointerCast(val, dest_type);
-  return ptr_cast;
+std::pair<llvm::Value*, bool> 
+PointerLifter::createCast(llvm::Value* src, llvm::Type* dest, llvm::IRBuilder<>& ir) {
+  // This operation has been done before, return equivalent instruction
+  auto cache_hit = equiv_cache.find(src);
+  if (cache_hit != equiv_cache.end()) {
+    auto equiv_cast = equiv_cache[src].find(dest);
+    if (equiv_cast != equiv_cache[src].end()) {
+      return {equiv_cache[src][dest], false};
+    }
+  }
+  // this operation has not been done before, create a new cast and store it. 
+  llvm::Value * ptr_cast = ir.CreateBitOrPointerCast(src, dest);
+  equiv_cache[src][dest] = ptr_cast;
+  return {ptr_cast, true}; 
 }
 
 std::pair<llvm::Value *, bool>
@@ -129,7 +141,7 @@ PointerLifter::visitInferInst(llvm::Instruction *inst,
 llvm::Value *PointerLifter::GetIndexedPointer(llvm::IRBuilder<> &ir,
                                               llvm::Value *address,
                                               llvm::Value *offset,
-                                              llvm::Type *dest_type) const {
+                                              llvm::Type *dest_type) {
 
   // TODO (Carson) the addr_space is  actually for thread stuff
   // auto i8_ptr_ty = llvm::PointerType::get(i8_ty, addr_space);
@@ -200,16 +212,19 @@ llvm::Value *PointerLifter::GetIndexedPointer(llvm::IRBuilder<> &ir,
       if (address->getType() == dest_type) {
         return ptr;
       } else {
-        llvm::Value *b1 = ir.CreateBitCast(ptr, dest_type);
-        return b1;
+        std::pair<llvm::Value*, bool> bc_pair = createCast(ptr, dest_type, ir);
+        return bc_pair.first;
       }
     }
   }
-  auto base = ir.CreateBitCast(address, i8_ptr_ty);
+  llvm::Type* some_type = i8_ptr_ty;
+  auto base_pair = createCast(address, some_type, ir);
+  // auto base = ir.CreateBitCast(address, i8_ptr_ty);
   llvm::Value *indices[1] = {ir.CreateTrunc(offset, i32_ty)};
-  auto gep = ir.CreateGEP(i8_ty, base, indices);
-  llvm::Value *b3 = ir.CreateBitCast(gep, dest_type);
-  return b3;
+  auto gep = ir.CreateGEP(i8_ty, base_pair.first, indices);
+  auto index_pair = createCast(gep, dest_type, ir);
+  // llvm::Value *b3 = ir.CreateBitCast(gep, dest_type);
+  return index_pair.first;
 }
 
 // MUST have an implementation of this if llvm:InstVisitor retun type is not
@@ -286,11 +301,9 @@ PointerLifter::visitBitCastInst(llvm::BitCastInst &inst) {
     // which knows more than us, and wants us to update our bitcast. So we just
     // create a new bitcast, replace the current one, and return
     llvm::IRBuilder ir(&inst);
-    llvm::Value *new_bitcast =
-        ir.CreateBitCast(inst.getOperand(0), inferred_type);
-
+    auto new_bc_pair = createCast(inst.getOperand(0), inferred_type, ir);
     // ReplaceAllUses(&inst, new_bitcast);
-    return {new_bitcast, true};
+    return new_bc_pair;
   }
   llvm::Value *possible_pointer = inst.getOperand(0);
   if (auto pointer_inst = llvm::dyn_cast<llvm::Instruction>(possible_pointer)) {
@@ -467,7 +480,8 @@ PointerLifter::BrightenGEP_PeelLastIndex(llvm::GetElementPtrInst *gep,
 
     // TODO (Carson) check
     llvm::IRBuilder<> ir(gep);
-    casted_src = ir.CreateBitCast(new_src, inferred_type);
+    auto cast_pair = createCast(new_src, inferred_type, ir);
+    casted_src = cast_pair.first;
   }
   // Now that we have `src` casted to the corrected type, we can index into
   // it, using an index that is scaled to the size of the
@@ -541,8 +555,8 @@ PointerLifter::visitPtrToIntInst(llvm::PtrToIntInst &inst) {
   // If it's not the same type, cast.
   llvm::IRBuilder<> ir(&inst);
   auto ptr_val = inst.getOperand(0);
-  llvm::Value *cast = ir.CreateBitOrPointerCast(ptr_val, inferred_type);
-  return {cast, true};
+  auto cast_pair = createCast(ptr_val, inferred_type, ir);
+  return cast_pair;
 }
 
 
@@ -777,10 +791,13 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &binop) {
         llvm::Value *indexed_pointer =
             GetIndexedPointer(ir, lhs_ptr->getOperand(0), rhs_const,
                               lhs_ptr->getOperand(0)->getType());
-        llvm::Value *int_cast =
-            ir.CreateBitOrPointerCast(indexed_pointer, inst->getType());
-        ReplaceAllUses(inst, int_cast);
-        return {int_cast, true};
+        
+        // llvm::Value *int_cast = ir.CreateBitOrPointerCast(indexed_pointer, inst->getType());
+        auto int_cast_pair = createCast(indexed_pointer, inst->getType(), ir);
+        ReplaceAllUses(inst, int_cast_pair.first);
+        // True because getIndexedPointer always does something right? 
+        // This should be change imo. 
+        return {int_cast_pair.first, true};
       }
     }
     if (rhs_ptr) {
@@ -789,10 +806,10 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &binop) {
         llvm::Value *indexed_pointer =
             GetIndexedPointer(ir, rhs_ptr->getOperand(0), lhs_const,
                               rhs_ptr->getOperand(0)->getType());
-        llvm::Value *int_cast =
-            ir.CreateBitOrPointerCast(indexed_pointer, inst->getType());
-        ReplaceAllUses(inst, int_cast);
-        return {int_cast, true};
+        auto int_cast_pair = createCast(indexed_pointer, inst->getType(), ir);
+
+        ReplaceAllUses(inst, int_cast_pair.first);
+        return {int_cast_pair.first, true};
       }
     }
 
@@ -838,10 +855,9 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &binop) {
         // Default behavior is just to cast, this is not ideal, because
         // we want to try and propagate as much as we can.
         llvm::IRBuilder ir(inst->getNextNode());
-        llvm::Value *default_cast = ir.CreateBitCast(inst, inferred_type);
-
+        auto cast_pair = createCast(inst, inferred_type, ir);
         // ReplaceAllUses(&inst, default_cast);
-        return {default_cast, true};
+        return cast_pair;
       }
 
       CHECK_EQ(ptr_val->getType()->isPointerTy(), 1);
@@ -897,18 +913,18 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &binop) {
 
       // We don't have a L/RHS instruction, just create a pointer
       llvm::IRBuilder ir(inst->getNextNode());
-      llvm::Value *add_ptr = ir.CreateIntToPtr(inst, inferred_type);
-      return {add_ptr, true};
+      auto cast_pair = createCast(inst, inferred_type, ir);
+      return cast_pair;
     }
   }
 
   // Default behavior is just to cast, this is not ideal, because
   // we want to try and propagate as much as we can.
   llvm::IRBuilder ir(inst->getNextNode());
-  llvm::Value *default_cast = ir.CreateBitCast(inst, inferred_type);
+  auto cast_pair = createCast(inst, inferred_type, ir);
 
   // ReplaceAllUses(&inst, default_cast);
-  return {default_cast, true};
+  return cast_pair;
 }
 
 std::pair<llvm::Value *, bool>
