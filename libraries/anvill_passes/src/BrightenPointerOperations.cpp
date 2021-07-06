@@ -66,7 +66,7 @@ PointerLifter::PointerLifter(llvm::Function *func_, unsigned max_gas_)
 
 
 std::tuple<llvm::Value *, bool, bool>
-PointerLifter::createCast(llvm::Value* src, llvm::Type* dest, llvm::IRBuilder<>& ir) {
+PointerLifter::createCast(llvm::Value* src, llvm::Type* dest) {
   // This operation has been done before, return equivalent instruction
   auto &ptr_cast = equiv_cache[src][dest];
   if (ptr_cast) {
@@ -83,21 +83,15 @@ PointerLifter::createCast(llvm::Value* src, llvm::Type* dest, llvm::IRBuilder<>&
 }
 // TODO (Carson) createGEP, createLoad, createAlloca other wrappers or make the above generic
 std::tuple<llvm::Value *, bool, bool> 
-PointerLifter::createGEP(llvm::Value* address, llvm::Value* offset, llvm::Type* dest_type, llvm::IRBuilder<>& ir) {
-  std::cout << "GEP ADDRESS: " << remill::LLVMThingToString(address) << std::endl;
-  std::cout << "GEP OFFSET: " << remill::LLVMThingToString(offset) << std::endl;
-  std::cout << "GEP TYPE: " << remill::LLVMThingToString(dest_type) << std::endl;
+PointerLifter::createGEP(llvm::Value* address, llvm::Value* offset, llvm::Type* dest_type) {
   auto &cached_gep = gep_cache[address][offset][dest_type];
   if (cached_gep) {
-    std::cout << "CACHED" << std::endl;
     return {cached_gep, !CHANGED_IR, BRIGHTEN_SUCCESS};
   }
   llvm::Instruction* better_addr = llvm::dyn_cast<llvm::Instruction>(address);
   // Insert the GEP right after whatever the base address is.
   llvm::IRBuilder<> new_ir(better_addr->getNextNode());
-  std::cout << "NOT CACHED" << std::endl;
   llvm::Value* new_gep = GetIndexedPointer(new_ir, address, offset, dest_type);
-  std::cout << "NEW GEP: " << remill::LLVMThingToString(new_gep) << std::endl;
   gep_cache[address][offset][dest_type] = cached_gep;
   return {new_gep, CHANGED_IR, BRIGHTEN_SUCCESS};
 }
@@ -171,15 +165,6 @@ llvm::Value *PointerLifter::GetIndexedPointer(llvm::IRBuilder<> &ir,
         llvm::dyn_cast<llvm::GlobalVariable>(new_lhs);
 
     if (lhs_global) {
-
-      // TODO (Carson) show peter, but this was annoying
-      // I expect this function to return a GEP, not abitcast.
-      // This function might be more general than what I want
-      // if (!index) {
-      //    LOG(ERROR) << "Creating bitcast?\n";
-      // return ir.CreateBitCast(lhs_global, dest_type);
-      // }
-
       // It's a global variable not associated with a native segment, try to
       // index into it in a natural-ish way. We only apply this when the index
       // is positive.
@@ -214,9 +199,6 @@ llvm::Value *PointerLifter::GetIndexedPointer(llvm::IRBuilder<> &ir,
             ptr = ir.CreateGEP(lhs_elem_type, address, indices);
             gep_cache[address][indices[0]][lhs_elem_type] = ptr;
           }
-          else {
-            std::cout << "INTERNAL GEP CACHE HIT" << std::endl;
-          }
         }
       } else {
         const auto pos_rhs_index = static_cast<unsigned>(rhs_index);
@@ -229,8 +211,6 @@ llvm::Value *PointerLifter::GetIndexedPointer(llvm::IRBuilder<> &ir,
           if (!ptr) {
             ptr = ir.CreateGEP(lhs_elem_type, address, indices);
             gep_cache[address][indices[0]][lhs_elem_type] = ptr;
-          }          else {
-            std::cout << "INTERNAL GEP CACHE HIT" << std::endl;
           }
         }
       }
@@ -840,12 +820,6 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &binop) {
         llvm::Value* addr = lhs_ptr->getOperand(0);
         // GEP worked should always be true.
         auto [gep, gep_changed, gep_worked] = createGEP(addr, rhs_const, addr->getType(), ir); 
-        
-        //llvm::Value *indexed_pointer =
-        //    GetIndexedPointer(ir, lhs_ptr->getOperand(0), rhs_const,
-        //                      lhs_ptr->getOperand(0)->getType());
-        
-        // llvm::Value *int_cast = ir.CreateBitOrPointerCast(indexed_pointer, inst->getType());
         auto [ptr, changed, worked] = createCast(gep, inst->getType(), ir);
         ReplaceAllUses(inst, ptr);
         // True because getIndexedPointer always does something right? 
@@ -858,10 +832,6 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &binop) {
         llvm::IRBuilder<> ir(inst);
         llvm::Value* addr = rhs_ptr->getOperand(0);
         auto [gep, gep_changed, gep_worked] = createGEP(addr, lhs_const, addr->getType(), ir); 
-
-        // llvm::Value *indexed_pointer =
-        //     GetIndexedPointer(ir, rhs_ptr->getOperand(0), lhs_const,
-        //                       rhs_ptr->getOperand(0)->getType());
         auto [ptr, changed, worked] = createCast(gep, inst->getType(), ir);
 
         ReplaceAllUses(inst, ptr);
