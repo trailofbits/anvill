@@ -56,7 +56,7 @@ class PointerLifterPass final : public llvm::FunctionPass {
 };
 
 class PointerLifter
-    : public llvm::InstVisitor<PointerLifter, std::pair<llvm::Value *, bool>> {
+    : public llvm::InstVisitor<PointerLifter, std::tuple<llvm::Value *, bool, bool>> {
  public:
   // this is my one requirement: I call a function, get a function pass.
   // I can pass that function a cross-reference resolver instance, and
@@ -67,35 +67,32 @@ class PointerLifter
   // Adds users to the next worklist, for downstream type propagation
   void ReplaceAllUses(llvm::Value *orig_inst, llvm::Value *new_inst);
 
-  // We need to get a pointer from some value
-  llvm::Value *getPointerToValue(llvm::IRBuilder<> &ir, llvm::Value *curr_val,
-                                 llvm::Type *dest_type);
-
-
-  std::pair<llvm::Value *, bool> visitIntToPtrInst(llvm::IntToPtrInst &inst);
-  std::pair<llvm::Value *, bool> visitLoadInst(llvm::LoadInst &inst);
-  std::pair<llvm::Value *, bool> visitReturnInst(llvm::ReturnInst& inst);
-  std::pair<llvm::Value *, bool> visitStoreInst(llvm::StoreInst& store);
-  std::pair<llvm::Value *, bool> visitAllocaInst(llvm::AllocaInst& alloca);
+  std::tuple<llvm::Value *, bool, bool> visitIntToPtrInst(llvm::IntToPtrInst &inst);
+  std::tuple<llvm::Value *, bool, bool> visitLoadInst(llvm::LoadInst &inst);
+  std::tuple<llvm::Value *, bool, bool> visitReturnInst(llvm::ReturnInst& inst);
+  std::tuple<llvm::Value *, bool, bool> visitStoreInst(llvm::StoreInst& store);
+  std::tuple<llvm::Value *, bool, bool> visitAllocaInst(llvm::AllocaInst& alloca);
   
-  std::pair<llvm::Value *, bool> visitSExtInst(llvm::SExtInst& inst);
-  std::pair<llvm::Value *, bool> visitZExtInst(llvm::ZExtInst& inst);
+  std::tuple<llvm::Value *, bool, bool> visitSExtInst(llvm::SExtInst& inst);
+  std::tuple<llvm::Value *, bool, bool> visitZExtInst(llvm::ZExtInst& inst);
 
-  std::pair<llvm::Value *, bool> visitCmpInst(llvm::CmpInst& inst);
+  std::tuple<llvm::Value *, bool, bool> visitCmpInst(llvm::CmpInst& inst);
   llvm::Value* flattenGEP(llvm::GetElementPtrInst *gep);
-  std::pair<llvm::Value *, bool> BrightenGEP_PeelLastIndex(llvm::GetElementPtrInst *dst,
+  std::tuple<llvm::Value *, bool, bool> BrightenGEP_PeelLastIndex(llvm::GetElementPtrInst *dst,
                             llvm::Type *inferred_type);
-  std::pair<llvm::Value *, bool> visitGetElementPtrInst(llvm::GetElementPtrInst &inst);
-  std::pair<llvm::Value *, bool> visitBitCastInst(llvm::BitCastInst &inst);
-  std::pair<llvm::Value *, bool> visitPHINode(llvm::PHINode &inst);
-  std::pair<llvm::Value *, bool> visitPtrToIntInst(llvm::PtrToIntInst& inst);
+  std::tuple<llvm::Value *, bool, bool> visitGetElementPtrInst(llvm::GetElementPtrInst &inst);
+  std::tuple<llvm::Value *, bool, bool> visitBitCastInst(llvm::BitCastInst &inst);
+  std::tuple<llvm::Value *, bool, bool> visitPHINode(llvm::PHINode &inst);
+  std::tuple<llvm::Value *, bool, bool> visitPtrToIntInst(llvm::PtrToIntInst& inst);
   // Simple wrapper for storing the type information into the list, and then
   // calling visit.
-  std::pair<llvm::Value *, bool> visitInferInst(llvm::Instruction *inst, llvm::Type *inferred_type);
-  std::pair<llvm::Value *, bool> visitInstruction(llvm::Instruction &I);
-  std::pair<llvm::Value *, bool> visitBinaryOperator(llvm::BinaryOperator &inst);
+  std::tuple<llvm::Value *, bool, bool> visitInferInst(llvm::Instruction *inst, llvm::Type *inferred_type);
+  std::tuple<llvm::Value *, bool, bool> visitInstruction(llvm::Instruction &I);
+  std::tuple<llvm::Value *, bool, bool> visitBinaryOperator(llvm::BinaryOperator &inst);
 
-  std::pair<llvm::Value *, bool> createCast(llvm::Value* inst, llvm::Type* dest_ty, llvm::IRBuilder<>& IR);
+  std::tuple<llvm::Value *, bool, bool> createCast(llvm::Value* inst, llvm::Type* dest_ty, llvm::IRBuilder<>& IR);
+  std::tuple<llvm::Value *, bool, bool> createGEP(llvm::Value* address, llvm::Value* offset, llvm::Type* dest_type, llvm::IRBuilder<>& ir);
+
 
   llvm::Value *GetIndexedPointer(llvm::IRBuilder<> &ir, llvm::Value *address,
                                  llvm::Value *offset, llvm::Type *t);
@@ -115,6 +112,7 @@ class PointerLifter
   std::unordered_map<llvm::Instruction *, bool> dead_inst;
 
   std::unordered_map<llvm::Value *, std::unordered_map<llvm::Type*, llvm::Value *>> equiv_cache;
+  std::unordered_map<llvm::Value *, std::unordered_map<llvm::Value*, std::unordered_map<llvm::Type*, llvm::Value*>>> gep_cache;
 
   // Whether or not progress has been made, e.g. a new type was inferred.
   bool made_progress{false};
