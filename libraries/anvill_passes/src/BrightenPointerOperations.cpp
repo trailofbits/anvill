@@ -113,8 +113,6 @@ PointerLifter::visitInferInst(llvm::Instruction *inst,
     // ourselves, then `next_inferred_val_type` will be set up to a non-null
     // pointer and we'll re-recurse on that updated value.
     while (inferred_val_type) {
-     //  std::cout << "infer visit: ";
-     //  std::cout << remill::LLVMThingToString(inst) << std::endl;
       auto [val, v_changed, v_worked] = visit(inst);
       if (!first_ret || val->getType() == inferred_type) {
         first_ret = val;
@@ -221,13 +219,13 @@ llvm::Value *PointerLifter::GetIndexedPointer(llvm::IRBuilder<> &ir,
       if (address->getType() == dest_type) {
         return ptr;
       } else {
-        auto [val, changed, worked] = createCast(ptr, dest_type, ir);
+        auto [val, changed, worked] = createCast(ptr, dest_type);
         return val;
       }
     }
   }
   llvm::Type* some_type = i8_ptr_ty;
-  auto [base, c_changed, c_worked] = createCast(address, some_type, ir);
+  auto [base, c_changed, c_worked] = createCast(address, some_type);
   // auto base = ir.CreateBitCast(address, i8_ptr_ty);
   llvm::Value *indices[1] = {ir.CreateTrunc(offset, i32_ty)};
   auto gep = gep_cache[base][indices[0]][i8_ty];
@@ -238,7 +236,7 @@ llvm::Value *PointerLifter::GetIndexedPointer(llvm::IRBuilder<> &ir,
             else {
             std::cout << "INTERNAL GEP CACHE HIT" << std::endl;
           }
-  auto [val, changed, worked] = createCast(gep, dest_type, ir);
+  auto [val, changed, worked] = createCast(gep, dest_type);
   // llvm::Value *b3 = ir.CreateBitCast(gep, dest_type);
   return val;
 }
@@ -327,7 +325,7 @@ PointerLifter::visitBitCastInst(llvm::BitCastInst &inst) {
     // which knows more than us, and wants us to update our bitcast. So we just
     // create a new bitcast, replace the current one, and return
     llvm::IRBuilder ir(&inst);
-    auto new_bc_pair = createCast(inst.getOperand(0), inferred_type, ir);
+    auto new_bc_pair = createCast(inst.getOperand(0), inferred_type);
     // ReplaceAllUses(&inst, new_bitcast);
     return new_bc_pair;
   }
@@ -583,7 +581,7 @@ PointerLifter::visitPtrToIntInst(llvm::PtrToIntInst &inst) {
   // If it's not the same type, cast.
   llvm::IRBuilder<> ir(&inst);
   auto ptr_val = inst.getOperand(0);
-  auto cast_pair = createCast(ptr_val, inferred_type, ir);
+  auto cast_pair = createCast(ptr_val, inferred_type);
   return cast_pair;
 }
 
@@ -819,8 +817,8 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &binop) {
         llvm::IRBuilder<> ir(inst);
         llvm::Value* addr = lhs_ptr->getOperand(0);
         // GEP worked should always be true.
-        auto [gep, gep_changed, gep_worked] = createGEP(addr, rhs_const, addr->getType(), ir); 
-        auto [ptr, changed, worked] = createCast(gep, inst->getType(), ir);
+        auto [gep, gep_changed, gep_worked] = createGEP(addr, rhs_const, addr->getType()); 
+        auto [ptr, changed, worked] = createCast(gep, inst->getType());
         ReplaceAllUses(inst, ptr);
         // True because getIndexedPointer always does something right? 
         // This should be change imo. 
@@ -831,8 +829,8 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &binop) {
       if (auto lhs_const = llvm::dyn_cast<llvm::ConstantInt>(lhs_op)) {
         llvm::IRBuilder<> ir(inst);
         llvm::Value* addr = rhs_ptr->getOperand(0);
-        auto [gep, gep_changed, gep_worked] = createGEP(addr, lhs_const, addr->getType(), ir); 
-        auto [ptr, changed, worked] = createCast(gep, inst->getType(), ir);
+        auto [gep, gep_changed, gep_worked] = createGEP(addr, lhs_const, addr->getType()); 
+        auto [ptr, changed, worked] = createCast(gep, inst->getType());
 
         ReplaceAllUses(inst, ptr);
         return {ptr, gep_changed || changed, worked};
@@ -858,7 +856,7 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &binop) {
                 << " in block " << bb->getName().str() << " in function "
                 << bb->getParent()->getName().str();
 
-    auto [new_pointer, changed, worked] = createCast(inst, inferred_type, ir);
+    auto [new_pointer, changed, worked] = createCast(inst, inferred_type);
     if (worked) { 
       ReplaceAllUses(inst, new_pointer);
     }
@@ -883,7 +881,7 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &binop) {
         // Default behavior is just to cast, this is not ideal, because
         // we want to try and propagate as much as we can.
         llvm::IRBuilder ir(inst->getNextNode());
-        auto cast_pair = createCast(inst, inferred_type, ir);
+        auto cast_pair = createCast(inst, inferred_type);
         // ReplaceAllUses(&inst, default_cast);
         return cast_pair;
       }
@@ -899,13 +897,14 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &binop) {
       }
       llvm::IRBuilder ir(inst);
       llvm::Value *indexed_pointer;
+      // TODO (Carson) this is dumb, change it
       if (rhs_const) {
-        auto [res, const_changed, const_worked] = createGEP(ptr_val, rhs_const, inferred_type, ir);
+        auto [res, const_changed, const_worked] = createGEP(ptr_val, rhs_const, inferred_type);
         changed = const_changed;
         worked = const_worked;
         indexed_pointer = res;
       } else {
-        auto [res, const_changed, const_worked] = createGEP(ptr_val, rhs_inst, inferred_type, ir);
+        auto [res, const_changed, const_worked] = createGEP(ptr_val, rhs_inst, inferred_type);
         changed = const_changed;
         worked = const_worked;
         indexed_pointer = res;
@@ -930,12 +929,12 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &binop) {
       llvm::IRBuilder ir(inst);
       llvm::Value *indexed_pointer;
       if (lhs_const) {
-        auto [indexed_point, gep_changed, gep_worked] = createGEP(ptr_val, lhs_const, inferred_type, ir);
+        auto [indexed_point, gep_changed, gep_worked] = createGEP(ptr_val, lhs_const, inferred_type);
         indexed_pointer = indexed_point;
         changed = gep_changed;
         worked = gep_worked;
       } else {
-        auto [indexed_point, gep_changed, gep_worked] = createGEP(ptr_val, lhs_inst, inferred_type, ir);
+        auto [indexed_point, gep_changed, gep_worked] = createGEP(ptr_val, lhs_inst, inferred_type);
         indexed_pointer = indexed_point;
         changed = gep_changed;
         worked = gep_worked;
@@ -948,7 +947,7 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &binop) {
 
       // We don't have a L/RHS instruction, just create a pointer
       llvm::IRBuilder ir(inst->getNextNode());
-      auto cast_pair = createCast(inst, inferred_type, ir);
+      auto cast_pair = createCast(inst, inferred_type);
       return cast_pair;
     }
   }
@@ -956,7 +955,7 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &binop) {
   // Default behavior is just to cast, this is not ideal, because
   // we want to try and propagate as much as we can.
   llvm::IRBuilder ir(inst->getNextNode());
-  auto cast_pair = createCast(inst, inferred_type, ir);
+  auto cast_pair = createCast(inst, inferred_type);
 
   // ReplaceAllUses(&inst, default_cast);
   return cast_pair;
@@ -1003,7 +1002,7 @@ PointerLifter::visitAllocaInst(llvm::AllocaInst &inst) {
   // If we've inferred a new type for alloca, lets just make a new alloca
   llvm::IRBuilder<> ir(&inst);
   //llvm::Value *new_alloca = ir.CreateAlloca(inferred_type);
-  auto [new_alloca, changed, worked] = createCast(&inst, inferred_type, ir);
+  auto [new_alloca, changed, worked] = createCast(&inst, inferred_type);
   return {new_alloca, changed, worked};
 }
 
