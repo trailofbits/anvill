@@ -90,6 +90,9 @@ PointerLifter::createGEP(llvm::Value* address, llvm::Value* offset, llvm::Type* 
   }
   llvm::Instruction* better_addr = llvm::dyn_cast<llvm::Instruction>(address);
   // Insert the GEP right after whatever the base address is.
+  while (auto is_phi = llvm::dyn_cast<llvm::PHINode>(better_addr)) {
+    better_addr = better_addr->getNextNode();
+  }
   llvm::IRBuilder<> new_ir(better_addr->getNextNode());
   llvm::Value* new_gep = GetIndexedPointer(new_ir, address, offset, dest_type);
   gep_cache[address][offset][dest_type] = cached_gep;
@@ -598,14 +601,25 @@ pointer
 */
 std::tuple<llvm::Value *, bool, bool>
 PointerLifter::visitIntToPtrInst(llvm::IntToPtrInst &inst) {
-  llvm::Type *inferred_type = inst.getType();
-  if (auto ptr_inst = llvm::dyn_cast<llvm::Instruction>(inst.getOperand(0))) {
-    auto [new_val, changed, worked] = visitInferInst(ptr_inst, inferred_type);
-    if (!worked) {
-      return {&inst, changed, !BRIGHTEN_SUCCESS};
+  llvm::Type *inferred_type = inferred_types[&inst];
+  if (inferred_type) {
+    if (auto ptr_inst = llvm::dyn_cast<llvm::Instruction>(inst.getOperand(0))) {
+      auto [new_val, changed, worked] = visitInferInst(ptr_inst, inferred_type);
+      if (!worked) {
+        return {&inst, changed, !BRIGHTEN_SUCCESS};
+      }
+      return {new_val, changed, worked};
     }
-    ReplaceAllUses(&inst, new_val);
-    return {new_val, changed, worked};
+  } else {
+    inferred_type = inst.getType();
+    if (auto ptr_inst = llvm::dyn_cast<llvm::Instruction>(inst.getOperand(0))) {
+      auto [new_val, changed, worked] = visitInferInst(ptr_inst, inferred_type);
+      if (!worked) {
+        return {&inst, changed, !BRIGHTEN_SUCCESS};
+      }
+      ReplaceAllUses(&inst, new_val);
+      return {new_val, changed, worked};
+    }
   }
   return {&inst, !CHANGED_IR, !BRIGHTEN_SUCCESS};
 }
@@ -692,14 +706,13 @@ PointerLifter::visitLoadInst(llvm::LoadInst &inst) {
     // Load from potentially a new addr.
     auto [maybe_new_addr, changed, worked] =
         visitInferInst(possible_mem_loc, inferred_type->getPointerTo());
-    if (!worked || maybe_new_addr->getType() != inferred_type->getPointerTo()) {
+    if (!worked) {
       //      DLOG(WARNING) << "Failed to promote load! Operand type not promoted "
       //                    << remill::LLVMThingToString(maybe_new_addr) << "\n";
       return {&inst, changed, !BRIGHTEN_SUCCESS};
     }
     // Create a new load instruction with type inferred_type which loads a ptr to inferred_type
     llvm::IRBuilder ir(&inst);
-    // TODO (Carson) we should propagate this cast up towards the def site. 
     llvm::Value *promoted_load = ir.CreateLoad(inferred_type, maybe_new_addr);
     return {promoted_load, CHANGED_IR, BRIGHTEN_SUCCESS};
   }
@@ -810,7 +823,6 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &binop) {
     // we also want to replace uses of the add with our int cast.
     if (lhs_ptr) {
       if (auto rhs_const = llvm::dyn_cast<llvm::ConstantInt>(rhs_op)) {
-        llvm::IRBuilder<> ir(inst);
         llvm::Value* addr = lhs_ptr->getOperand(0);
         // GEP worked should always be true.
         auto [gep, gep_changed, gep_worked] = createGEP(addr, rhs_const, addr->getType()); 
@@ -823,7 +835,6 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &binop) {
     }
     if (rhs_ptr) {
       if (auto lhs_const = llvm::dyn_cast<llvm::ConstantInt>(lhs_op)) {
-        llvm::IRBuilder<> ir(inst);
         llvm::Value* addr = rhs_ptr->getOperand(0);
         auto [gep, gep_changed, gep_worked] = createGEP(addr, lhs_const, addr->getType()); 
         auto [ptr, changed, worked] = createCast(gep, inst->getType());
@@ -1110,7 +1121,6 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
   for (auto inst : to_remove) {
     if (auto rep_inst = rep_map[inst];
         rep_inst && rep_inst->getType() == inst->getType()) {
-
     //  DLOG(ERROR) << "Replacing:\n";
     //  DLOG(ERROR) << remill::LLVMThingToString(inst) << "\n";
     //  DLOG(ERROR) << remill::LLVMThingToString(rep_inst) << "\n";
