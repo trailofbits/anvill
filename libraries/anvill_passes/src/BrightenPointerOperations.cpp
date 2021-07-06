@@ -233,9 +233,6 @@ llvm::Value *PointerLifter::GetIndexedPointer(llvm::IRBuilder<> &ir,
     gep = ir.CreateGEP(i8_ty, base, indices);
     gep_cache[base][indices[0]][i8_ty] = gep;
   }
-            else {
-            std::cout << "INTERNAL GEP CACHE HIT" << std::endl;
-          }
   auto [val, changed, worked] = createCast(gep, dest_type);
   // llvm::Value *b3 = ir.CreateBitCast(gep, dest_type);
   return val;
@@ -245,7 +242,6 @@ llvm::Value *PointerLifter::GetIndexedPointer(llvm::IRBuilder<> &ir,
 // void.
 std::tuple<llvm::Value *, bool, bool>
 PointerLifter::visitInstruction(llvm::Instruction &inst) {
-  // std::cout << remill::LLVMThingToString(inst) << std::endl;
   return {&inst, !CHANGED_IR, !BRIGHTEN_SUCCESS};
 }
 
@@ -1111,7 +1107,6 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
     next_inferred_types.clear();
     count++;
   }
- //  std::cout << "DONE: Count is: " << count << " Max gas is: " << max_gas  << std::endl;
   for (auto inst : to_remove) {
     if (auto rep_inst = rep_map[inst];
         rep_inst && rep_inst->getType() == inst->getType()) {
@@ -1120,11 +1115,7 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
     //  DLOG(ERROR) << remill::LLVMThingToString(inst) << "\n";
     //  DLOG(ERROR) << remill::LLVMThingToString(rep_inst) << "\n";
       inst->replaceAllUsesWith(rep_inst);
-    } else {
-    //  DLOG(ERROR) << "Can't replace these two:\n";
-    //  DLOG(ERROR) << remill::LLVMThingToString(inst) << "\n";
-    //  DLOG(ERROR) << remill::LLVMThingToString(rep_inst) << "\n";
-    }
+    } 
   }
   for (auto inst : to_remove) {
     if (inst->use_empty()) {
