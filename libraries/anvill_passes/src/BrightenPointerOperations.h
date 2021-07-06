@@ -90,8 +90,8 @@ class PointerLifter
   std::tuple<llvm::Value *, bool, bool> visitInstruction(llvm::Instruction &I);
   std::tuple<llvm::Value *, bool, bool> visitBinaryOperator(llvm::BinaryOperator &inst);
 
-  std::tuple<llvm::Value *, bool, bool> createCast(llvm::Value* inst, llvm::Type* dest_ty, llvm::IRBuilder<>& IR);
-  std::tuple<llvm::Value *, bool, bool> createGEP(llvm::Value* address, llvm::Value* offset, llvm::Type* dest_type, llvm::IRBuilder<>& ir);
+  std::tuple<llvm::Value *, bool, bool> createCast(llvm::Value* inst, llvm::Type* dest_ty);
+  std::tuple<llvm::Value *, bool, bool> createGEP(llvm::Value* address, llvm::Value* offset, llvm::Type* dest_type);
 
 
   llvm::Value *GetIndexedPointer(llvm::IRBuilder<> &ir, llvm::Value *address,
