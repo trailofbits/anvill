@@ -357,7 +357,6 @@ PointerLifter::visitBitCastInst(llvm::BitCastInst &inst) {
 // Replace all uses of the original gep with the return value (final flattened)
 // Remove spurious instructions with dead code removal.
 llvm::Value *PointerLifter::flattenGEP(llvm::GetElementPtrInst *gep) {
-  return gep;
   // FIXME (Carson), delete once we can fix the TODO with getting indexed types
   // Ticket #195
   if (gep->getPointerOperandType()->getPointerElementType()->isStructTy() ||
@@ -416,106 +415,97 @@ llvm::Value *PointerLifter::flattenGEP(llvm::GetElementPtrInst *gep) {
 std::tuple<llvm::Value *, bool, bool>
 PointerLifter::BrightenGEP_PeelLastIndex(llvm::GetElementPtrInst *gep,
                                          llvm::Type *inferred_type) {
-  return {gep, !CHANGED_IR, !BRIGHTEN_SUCCESS};
-
   // TODO (Carson) refactor this to use canRewriteGEP
 
-  // if (gep->getType()->isPointerTy()) {
-  //   if (gep->getType()->getPointerElementType()->isStructTy()) {
-  //     return {gep, false, false};
-  //   }
-  // }
-  // auto src = gep->getPointerOperand();
+  if (gep->getType()->isPointerTy()) {
+    if (gep->getType()->getPointerElementType()->isStructTy()) {
+      return {gep, !CHANGED_IR, !BRIGHTEN_SUCCESS};
+    }
+  }
+  auto src = gep->getPointerOperand();
 
-  // // TODO (Carson), handling structs could be tricky....
-  // if (gep->getType()->isStructTy()) {
-  //   return {gep, false, false};
-  // }
+  // TODO (Carson), handling structs could be tricky....
+  if (gep->getType()->isStructTy()) {
+    return {gep, !CHANGED_IR, !BRIGHTEN_SUCCESS};
+  }
 
-  // llvm::SmallVector<llvm::Value *, 4> indices;
-  // for (auto it = gep->idx_begin(); it != gep->idx_end(); ++it) {
-  //   indices.push_back(it->get());
-  // }
-  // // If the last index isn't a constant then we can't peel it off.
-  // auto last_index = llvm::dyn_cast<llvm::ConstantInt>(indices.pop_back_val());
-  // if (!last_index) {
-  //   return {gep, false};
-  // }
+  llvm::SmallVector<llvm::Value *, 4> indices;
+  for (auto it = gep->idx_begin(); it != gep->idx_end(); ++it) {
+    indices.push_back(it->get());
+  }
+  // If the last index isn't a constant then we can't peel it off.
+  auto last_index = llvm::dyn_cast<llvm::ConstantInt>(indices.pop_back_val());
+  if (!last_index) {
+    return {gep, !CHANGED_IR, !BRIGHTEN_SUCCESS};
+  }
 
-  // // Figure out what the last index was represented in terms of a byte offset.
-  // // We need to be careful about negative indices -- we want to maintain them,
-  // // but we don't want division/remainder to produce different roundings.
-  // const auto gep_elem_type_size =
-  //     dl.getTypeAllocSize(gep->getType()->getPointerElementType())
-  //         .getFixedSize();
-  // const auto inferred_ele_type_size =
-  //     dl.getTypeAllocSize(inferred_type->getPointerElementType())
-  //         .getFixedSize();
-  // const auto last_index_i = last_index->getSExtValue();
-  // const auto index_value =
-  //     std::abs(last_index_i) * static_cast<uint64_t>(gep_elem_type_size);
-  // const auto last_index_sign = (last_index_i) ? 1 : -1;
+  // Figure out what the last index was represented in terms of a byte offset.
+  // We need to be careful about negative indices -- we want to maintain them,
+  // but we don't want division/remainder to produce different roundings.
+  const auto gep_elem_type_size =
+      dl.getTypeAllocSize(gep->getType()->getPointerElementType())
+          .getFixedSize();
+  const auto inferred_ele_type_size =
+      dl.getTypeAllocSize(inferred_type->getPointerElementType())
+          .getFixedSize();
+  const auto last_index_i = last_index->getSExtValue();
+  const auto index_value =
+      std::abs(last_index_i) * static_cast<uint64_t>(gep_elem_type_size);
+  const auto last_index_sign = (last_index_i) ? 1 : -1;
 
-  // // Error case, in the case our inferred type size is greater than the offset
-  // // Lets not break anything. dont do it.
-  // // imagine you have an i8* with offset 1 byte, and a cast to i32*, you can't
-  // // represent that 1 byte with a complete index
-  // // If you can think it, its an edge case :galaxy_brain:
-  // if (inferred_ele_type_size > index_value) {
-  //   return {gep, false};
-  // }
+  // Error case, in the case our inferred type size is greater than the offset
+  // Lets not break anything. dont do it.
+  // imagine you have an i8* with offset 1 byte, and a cast to i32*, you can't
+  // represent that 1 byte with a complete index
+  // If you can think it, its an edge case :galaxy_brain:
+  if (inferred_ele_type_size > index_value) {
+    return {gep, !CHANGED_IR, !BRIGHTEN_SUCCESS};
+  }
 
-  // // last_index_i = value / gep_elem_type_size
-  // // value = last_index_i * gep_elem_type_size
-  // // adjusted_value = value / inferred_type_size
-  // auto size_adjusted_index = index_value / inferred_ele_type_size;
+  // last_index_i = value / gep_elem_type_size
+  // value = last_index_i * gep_elem_type_size
+  // adjusted_value = value / inferred_type_size
+  auto size_adjusted_index = index_value / inferred_ele_type_size;
 
-  // // LOG(ERROR) << "Size adjusted index (for whatever the new type is): "
-  // //            << size_adjusted_index << "=" <<  / "gep_elem_type_size\n";
-  // // The last index does not evenly divide the size of the result
-  // // element type.
-  // if ((index_value % inferred_ele_type_size)) {
-  //   return {gep, false};
-  // }
-  // llvm::Value *new_src = nullptr;
+  // LOG(ERROR) << "Size adjusted index (for whatever the new type is): "
+  //            << size_adjusted_index << "=" <<  / "gep_elem_type_size\n";
+  // The last index does not evenly divide the size of the result
+  // element type.
+  if ((index_value % inferred_ele_type_size)) {
+    return {gep, !CHANGED_IR, !BRIGHTEN_SUCCESS};
+  }
+  llvm::Value *new_src = nullptr;
 
-  // // Generate a new `src` that has one less index.
-  // if (indices.empty()) {
-  //   new_src = src;
-  // } else {
-  //   llvm::IRBuilder<> ir(gep);
+  // Generate a new `src` that has one less index.
+  if (indices.empty()) {
+    new_src = src;
+  } else {
+    llvm::IRBuilder<> ir(gep);
+    new_src =
+        ir.CreateGEP(src->getType()->getPointerElementType(), src, indices);
+  }
+  llvm::Instruction *new_src_inst = llvm::dyn_cast<llvm::Instruction>(new_src);
+  if (!new_src_inst) {
+    return {gep, !CHANGED_IR, !BRIGHTEN_SUCCESS};  // E.g. could be an `llvm::Argument *`.
+  }
 
-  //   // TODO (Carson) seems kinda sketchy.
-  //   new_src =
-  //       ir.CreateGEP(src->getType()->getPointerElementType(), src, indices);
-  // }
-  // llvm::Instruction *new_src_inst = llvm::dyn_cast<llvm::Instruction>(new_src);
-  // if (!new_src_inst) {
-  //   return {gep, false};  // E.g. could be an `llvm::Argument *`.
-  // }
+  // Convert that new `src` to have the correct type.
+  auto [casted_src, changed, worked] = visitInferInst(new_src_inst, inferred_type);
+  if (!worked) {
+    auto [promo, changed, worked] = createCast(new_src, inferred_type);
+    casted_src = promo;
+  }
+  // Now that we have `src` casted to the corrected type, we can index into
+  // it, using an index that is scaled to the size of the
+  indices.clear();
+  indices.push_back(llvm::ConstantInt::get(
+      last_index->getType(), last_index_sign * size_adjusted_index, true));
+  llvm::IRBuilder<> ir(gep);
 
-  // // Convert that new `src` to have the correct type.
-  // auto [casted_src, promoted] = visitInferInst(new_src_inst, inferred_type);
-  // if (!promoted) {
-
-  //   //    DLOG(INFO) << "Failed to flatten gep, making bitcast!\n";
-
-  //   // TODO (Carson) check
-  //   llvm::IRBuilder<> ir(gep);
-  //   auto cast_pair = createCast(new_src, inferred_type, ir);
-  //   casted_src = cast_pair.first;
-  // }
-  // // Now that we have `src` casted to the corrected type, we can index into
-  // // it, using an index that is scaled to the size of the
-  // indices.clear();
-  // indices.push_back(llvm::ConstantInt::get(
-  //     last_index->getType(), last_index_sign * size_adjusted_index, true));
-  // llvm::IRBuilder<> ir(gep);
-
-  // // Casted source should be inferred_type, so get the element type
-  // const auto new_gep =
-  //     ir.CreateGEP(inferred_type->getPointerElementType(), casted_src, indices);
-  // return {new_gep, true};
+  // Casted source should be inferred_type, so get the element type
+  const auto new_gep =
+      ir.CreateGEP(inferred_type->getPointerElementType(), casted_src, indices);
+  return {new_gep, CHANGED_IR, BRIGHTEN_SUCCESS};
 }
 
 // TODO (Carson), create example where promotion to operand succeeds, BUT
@@ -535,8 +525,6 @@ PointerLifter::visitGetElementPtrInst(llvm::GetElementPtrInst &inst) {
   if (!inferred_type) {
     return {&inst, !CHANGED_IR, !BRIGHTEN_SUCCESS};
   }
-  return {&inst, !CHANGED_IR, !BRIGHTEN_SUCCESS};
-
 
   // TODO (Carson) remove these when we can handle them.
   if (inst.getSourceElementType()->isStructTy() ||
@@ -1075,7 +1063,6 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
 
   // Preprocessing
   // 1. Flatten geps
-  /*
   for (auto &block : func) {
     for (auto &inst : block) {
       if (auto gep_inst = llvm::dyn_cast<llvm::GetElementPtrInst>(&inst)) {
@@ -1090,13 +1077,13 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
       gep_inst->replaceAllUsesWith(new_gep);
     }
   }
-  */
+  
   // Deadcode remove stale geps.
   llvm::legacy::FunctionPassManager fpm(mod);
   fpm.add(llvm::createDeadCodeEliminationPass());
-  // fpm.doInitialization();
-  // fpm.run(func);
-  // fpm.doFinalization();
+  fpm.doInitialization();
+  fpm.run(func);
+  fpm.doFinalization();
 
   made_progress = true;
   unsigned int count = 0;
