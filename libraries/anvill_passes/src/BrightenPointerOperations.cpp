@@ -42,15 +42,8 @@ PointerLifterPass::PointerLifterPass(unsigned max_gas_)
       max_gas(max_gas_) {}
 
 bool PointerLifterPass::runOnFunction(llvm::Function &f) {
-
-  f.print(llvm::errs(), nullptr);
   PointerLifter lifter(&f, max_gas);
   lifter.LiftFunction(f);
-  std::cout << "AFTER" << std::endl;
-  f.print(llvm::errs(), nullptr);
-  // TODO (Carson) have an analysis function which determines modifications
-  // Then use lift function to run those modifications
-  // Can return true/false depending on what was modified
   return true;
 }
 
@@ -74,6 +67,9 @@ PointerLifter::createCast(llvm::Value* src, llvm::Type* dest) {
   }
   // Create cast right next to source. 
   llvm::Instruction* better_src = llvm::dyn_cast<llvm::Instruction>(src);
+  if (!better_src) {
+    return {src, !CHANGED_IR, !BRIGHTEN_SUCCESS};
+  }
   while (auto is_phi = llvm::dyn_cast<llvm::PHINode>(better_src)) {
     better_src = better_src->getNextNode();
   }
@@ -88,17 +84,47 @@ std::tuple<llvm::Value *, bool, bool>
 PointerLifter::createGEP(llvm::Value* address, llvm::Value* offset, llvm::Type* dest_type) {
   auto &cached_gep = gep_cache[address][offset][dest_type];
   if (cached_gep) {
+    // llvm::Instruction* potential_swap = llvm::dyn_cast<llvm::Instruction>(cached_gep);
+    // auto func = potential_swap->getParent()->getParent();
+    // llvm::DominatorTree dt(*func);
+    // llvm::Instruction* better_addr = llvm::dyn_cast<llvm::Instruction>(address);
     return {cached_gep, !CHANGED_IR, BRIGHTEN_SUCCESS};
   }
-  llvm::Instruction* better_addr = llvm::dyn_cast<llvm::Instruction>(address);
-  // Insert the GEP right after whatever the base address is.
-  while (auto is_phi = llvm::dyn_cast<llvm::PHINode>(better_addr)) {
-    better_addr = better_addr->getNextNode();
+
+  // Instructions like %451 = getelementptr i8, i8* %450, i32 %452 can't be inserted right after the address, as it will come before 452 causing an error. 
+  // 452 needs to dominate the gep, so we discover if the address dominates the offset. If it does, we insert after the offset instead. 
+  llvm::Instruction* insert_point = nullptr;
+  if (auto const_offset = llvm::dyn_cast<llvm::ConstantExpr>(offset)) {
+    insert_point = llvm::dyn_cast<llvm::Instruction>(address);
+    if (!insert_point) {
+      return {address, !CHANGED_IR, !BRIGHTEN_SUCCESS};
+    }
   }
-  llvm::IRBuilder<> new_ir(better_addr->getNextNode());
+  else {
+    llvm::Instruction* candidate_addr1 = llvm::dyn_cast<llvm::Instruction>(address);
+    llvm::Instruction* candidate_addr2 = llvm::dyn_cast<llvm::Instruction>(offset);
+    if (!candidate_addr1 || !candidate_addr2) {
+        return {address, !CHANGED_IR, !BRIGHTEN_SUCCESS};
+    }
+    auto func = candidate_addr1->getParent()->getParent();
+    llvm::DominatorTree dt(*func);
+    bool addr_dom = dt.dominates(candidate_addr1, candidate_addr2);
+    if (addr_dom) {
+      insert_point = candidate_addr2;
+    }
+  }
+
+  // Insert the GEP right after whatever the base address is.
+  while (auto is_phi = llvm::dyn_cast<llvm::PHINode>(insert_point)) {
+    insert_point = insert_point->getNextNode();
+  }
+
+  llvm::IRBuilder<> new_ir(insert_point->getNextNode());
   // GIP updates the GEP cache
-  auto [new_gep, changed] = GetIndexedPointer(new_ir, address, offset, dest_type);
-  return {new_gep, changed, BRIGHTEN_SUCCESS};
+  auto [new_gep, changed, worked] =
+      GetIndexedPointer(new_ir, address, offset, dest_type);
+
+  return {new_gep, changed, worked};
 }
 
 // TODO (Carson) find a way to generify this/createCast to merge them together. 
@@ -111,14 +137,17 @@ PointerLifter::createLoad(llvm::Value* src, llvm::Type* dest) {
   }
   // Create cast right next to source. 
   llvm::Instruction* better_src = llvm::dyn_cast<llvm::Instruction>(src);
-    while (auto is_phi = llvm::dyn_cast<llvm::PHINode>(better_src)) {
+  if (!better_src) {
+    return {src, !CHANGED_IR, !BRIGHTEN_SUCCESS};
+  }
+  while (auto is_phi = llvm::dyn_cast<llvm::PHINode>(better_src)) {
     better_src = better_src->getNextNode();
   }
   llvm::IRBuilder<> new_ir(better_src->getNextNode());
-  // this operation has not been done before, create a new cast and store it. 
-  ptr_cast = new_ir.CreateLoad(dest, src);
-  load_cache[src][dest] = ptr_cast;
-  return {ptr_cast, CHANGED_IR, BRIGHTEN_SUCCESS}; 
+  // this operation has not been done before, create a new cast and store it.
+  auto load = new_ir.CreateLoad(dest, src);
+  load_cache[src][dest] = load;
+  return {load, CHANGED_IR, BRIGHTEN_SUCCESS}; 
 }
 
 // TODO (Carson) find a way to generify this/createCast to merge them together. 
@@ -132,8 +161,8 @@ PointerLifter::createPHI(llvm::PHINode* src, llvm::Type* dest) {
   // Create cast right next to source. 
   llvm::IRBuilder<> ir(src->getNextNode());
   // this operation has not been done before, create a new cast and store it. 
-
   const auto num_vals = src->getNumIncomingValues();
+
   auto new_phi = ir.CreatePHI(dest, num_vals);
   bool overall_changed = false;
   for (auto i = 0u; i < num_vals; i++) {
@@ -210,7 +239,7 @@ PointerLifter::visitInferInst(llvm::Instruction *inst,
 }
 
 
-std::pair<llvm::Value*, bool> 
+std::tuple<llvm::Value*, bool, bool> 
 PointerLifter::GetIndexedPointer(llvm::IRBuilder<> &ir,
                                               llvm::Value *address,
                                               llvm::Value *offset,
@@ -235,7 +264,7 @@ PointerLifter::GetIndexedPointer(llvm::IRBuilder<> &ir,
       // is positive.
       if (0 < index) {
         auto offset = static_cast<uint64_t>(index);
-        return {remill::BuildPointerToOffset(ir, lhs_global, offset, dest_type), true};
+        return {remill::BuildPointerToOffset(ir, lhs_global, offset, dest_type), CHANGED_IR, BRIGHTEN_SUCCESS};
       }
     }
 
@@ -286,17 +315,23 @@ PointerLifter::GetIndexedPointer(llvm::IRBuilder<> &ir,
     // We got a GEP for the dest, now make sure it's the right type.
     if (ptr) {
       if (address->getType() == dest_type) {
-        return {ptr, overall_changed};
+        return {ptr, overall_changed, BRIGHTEN_SUCCESS};
       } else {
         auto [val, changed, worked] = createCast(ptr, dest_type);
         overall_changed |= changed;
-        return {val, overall_changed};
+        if (!worked) {
+          return {address, overall_changed, !BRIGHTEN_SUCCESS};
+        }
+        return {val, overall_changed, BRIGHTEN_SUCCESS};
       }
     }
   }
   llvm::Type* some_type = i8_ptr_ty;
   auto [base, c_changed, c_worked] = createCast(address, some_type);
   overall_changed |= c_changed;
+  if (!c_worked) {
+    return {address, overall_changed, !BRIGHTEN_SUCCESS};
+  }
   // auto base = ir.CreateBitCast(address, i8_ptr_ty);
   llvm::Value *indices[1] = {ir.CreateTrunc(offset, i32_ty)};
   auto gep = gep_cache[base][indices[0]][i8_ty];
@@ -307,7 +342,10 @@ PointerLifter::GetIndexedPointer(llvm::IRBuilder<> &ir,
   }
   auto [val, changed, worked] = createCast(gep, dest_type);
   overall_changed |= changed;
-  return {val, overall_changed};
+  if (!worked) {
+    return {address, overall_changed, !BRIGHTEN_SUCCESS};
+  }
+  return {val, overall_changed, BRIGHTEN_SUCCESS};
 }
 
 // MUST have an implementation of this if llvm:InstVisitor retun type is not
@@ -323,13 +361,6 @@ void PointerLifter::ReplaceAllUses(llvm::Value *old_val, llvm::Value *new_val) {
     return;
   }
   if (auto old_inst = llvm::dyn_cast<llvm::Instruction>(old_val)) {
-    // This fixes an infinite loop 
-    // Since we don't replace instructions at the end of every cycle 
-    // We might see that we are trying to replace the same over again. 
-    // auto& cache_hit = rep_map[old_inst];
-    // if (cache_hit) {
-    //   return;
-    // }
     to_remove.insert(old_inst);
     rep_map[old_inst] = new_val;
     // made_progress = true;
@@ -395,9 +426,9 @@ PointerLifter::visitBitCastInst(llvm::BitCastInst &inst) {
     // which knows more than us, and wants us to update our bitcast. So we just
     // create a new bitcast, replace the current one, and return
     llvm::IRBuilder ir(&inst);
-    auto new_bc_pair = createCast(inst.getOperand(0), inferred_type);
+    auto new_bc = createCast(inst.getOperand(0), inferred_type);
     // ReplaceAllUses(&inst, new_bitcast);
-    return new_bc_pair;
+    return new_bc;
   }
   llvm::Value *possible_pointer = inst.getOperand(0);
   if (auto pointer_inst = llvm::dyn_cast<llvm::Instruction>(possible_pointer)) {
@@ -417,10 +448,6 @@ PointerLifter::visitBitCastInst(llvm::BitCastInst &inst) {
     //                  << remill::LLVMThingToString(pointer_inst) << "\n";
     return {&inst, changed_ir, opt_success};
   }
-  // TODO (Carson) make sure in the visitor methods that we dont assume inferred
-  // type is the return type, we can fail!
-  //  DLOG(WARNING) << "BitCast, unknown operand type: "
-  //                << remill::LLVMThingToString(inst.getOperand(0)->getType());
   return {&inst, !CHANGED_IR, !BRIGHTEN_SUCCESS};
 }
 
@@ -428,6 +455,7 @@ PointerLifter::visitBitCastInst(llvm::BitCastInst &inst) {
 // Replace all uses of the original gep with the return value (final flattened)
 // Remove spurious instructions with dead code removal.
 llvm::Value *PointerLifter::flattenGEP(llvm::GetElementPtrInst *gep) {
+  // return gep;
   // FIXME (Carson), delete once we can fix the TODO with getting indexed types
   // Ticket #195
   if (gep->getPointerOperandType()->getPointerElementType()->isStructTy() ||
@@ -486,6 +514,8 @@ llvm::Value *PointerLifter::flattenGEP(llvm::GetElementPtrInst *gep) {
 std::tuple<llvm::Value *, bool, bool>
 PointerLifter::BrightenGEP_PeelLastIndex(llvm::GetElementPtrInst *gep,
                                          llvm::Type *inferred_type) {
+          //  return {gep, !CHANGED_IR, !BRIGHTEN_SUCCESS};
+                                     
   // TODO (Carson) refactor this to use canRewriteGEP
 
   if (gep->getType()->isPointerTy()) {
@@ -564,6 +594,9 @@ PointerLifter::BrightenGEP_PeelLastIndex(llvm::GetElementPtrInst *gep,
   auto [casted_src, changed, worked] = visitInferInst(new_src_inst, inferred_type);
   if (!worked) {
     auto [promo, changed, worked] = createCast(new_src, inferred_type);
+    if (!worked) {
+      return {gep, changed, !BRIGHTEN_SUCCESS};
+    }
     casted_src = promo;
   }
   // Now that we have `src` casted to the corrected type, we can index into
@@ -592,6 +625,7 @@ PointerLifter::BrightenGEP_PeelLastIndex(llvm::GetElementPtrInst *gep,
 //      i. if works, update last
 std::tuple<llvm::Value *, bool, bool>
 PointerLifter::visitGetElementPtrInst(llvm::GetElementPtrInst &inst) {
+  
   llvm::Type *inferred_type = inferred_types[&inst];
   if (!inferred_type) {
     return {&inst, !CHANGED_IR, !BRIGHTEN_SUCCESS};
@@ -731,7 +765,9 @@ PointerLifter::visitLoadInst(llvm::LoadInst &inst) {
       return {&inst, changed, !BRIGHTEN_SUCCESS};
     }
     // Create a new load instruction with type inferred_type which loads a ptr to inferred_type
-    auto [promoted_load, l_changed, l_worked] = createLoad(maybe_new_addr, inferred_type);
+    auto [promoted_load, l_changed, l_worked] =
+        createLoad(maybe_new_addr, inferred_type);
+
     return {promoted_load, l_changed || changed, l_worked};
   }
   return {&inst, !CHANGED_IR, !BRIGHTEN_SUCCESS};
@@ -819,7 +855,13 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &binop) {
         llvm::Value* addr = lhs_ptr->getOperand(0);
         // GEP worked should always be true.
         auto [gep, gep_changed, gep_worked] = createGEP(addr, rhs_const, addr->getType()); 
+        if (!gep_worked) {
+          return {inst, !CHANGED_IR, !BRIGHTEN_SUCCESS};
+        }
         auto [ptr, changed, worked] = createCast(gep, inst->getType());
+        if (!worked) {
+          return {inst, !CHANGED_IR, !BRIGHTEN_SUCCESS};
+        }
         ReplaceAllUses(inst, ptr);
         // True because getIndexedPointer always does something right? 
         // This should be change imo. 
@@ -830,8 +872,13 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &binop) {
       if (auto lhs_const = llvm::dyn_cast<llvm::ConstantInt>(lhs_op)) {
         llvm::Value* addr = rhs_ptr->getOperand(0);
         auto [gep, gep_changed, gep_worked] = createGEP(addr, lhs_const, addr->getType()); 
+        if (!gep_worked)  {
+          return {inst, !CHANGED_IR, !BRIGHTEN_SUCCESS};
+        }
         auto [ptr, changed, worked] = createCast(gep, inst->getType());
-
+        if (!worked) {
+          return {inst, !CHANGED_IR, !BRIGHTEN_SUCCESS};
+        }
         ReplaceAllUses(inst, ptr);
         return {ptr, gep_changed || changed, worked};
       }
@@ -857,9 +904,10 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &binop) {
                 << bb->getParent()->getName().str();
 
     auto [new_pointer, changed, worked] = createCast(inst, inferred_type);
-    if (worked) { 
-      ReplaceAllUses(inst, new_pointer);
+    if (!worked) { 
+      return {inst, changed, worked};
     }
+    ReplaceAllUses(inst, new_pointer);
     return {new_pointer, changed, worked};
 
   // If neither of them are known pointers, then we have some inference to
@@ -920,7 +968,6 @@ PointerLifter::visitBinaryOperator(llvm::BinaryOperator &binop) {
         return {inst, changed, worked};
       }
 
-      // TODO (Carson) Confirm pointer type.
       auto lhs_const = llvm::dyn_cast<llvm::ConstantInt>(lhs_op);
       if (!lhs_const && !lhs_inst) {
         DLOG(ERROR) << "Error! LHS is not const or inst\n";
@@ -1001,7 +1048,6 @@ PointerLifter::visitAllocaInst(llvm::AllocaInst &inst) {
   }
   // If we've inferred a new type for alloca, lets just make a new alloca
   llvm::IRBuilder<> ir(&inst);
-  //llvm::Value *new_alloca = ir.CreateAlloca(inferred_type);
   auto [new_alloca, changed, worked] = createCast(&inst, inferred_type);
   return {new_alloca, changed, worked};
 }

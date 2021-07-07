@@ -91,10 +91,11 @@ class PointerLifter
   std::tuple<llvm::Value *, bool, bool> visitBinaryOperator(llvm::BinaryOperator &inst);
 
   std::tuple<llvm::Value *, bool, bool> createCast(llvm::Value* inst, llvm::Type* dest_ty);
+  std::tuple<llvm::Value *, bool, bool> createLoad(llvm::Value* inst, llvm::Type* dest_ty);
   std::tuple<llvm::Value *, bool, bool> createGEP(llvm::Value* address, llvm::Value* offset, llvm::Type* dest_type);
+  std::tuple<llvm::Value *, bool, bool> createPHI(llvm::PHINode* src, llvm::Type* dest);
 
-
-  llvm::Value *GetIndexedPointer(llvm::IRBuilder<> &ir, llvm::Value *address,
+  std::tuple<llvm::Value *, bool, bool> GetIndexedPointer(llvm::IRBuilder<> &ir, llvm::Value *address,
                                  llvm::Value *offset, llvm::Type *t);
 
   // Driver method
@@ -111,9 +112,12 @@ class PointerLifter
   std::unordered_map<llvm::Instruction *, llvm::Value *> rep_map;
   std::unordered_map<llvm::Instruction *, bool> dead_inst;
 
+  // TODO (Carson) Merge these together somehow? 
   std::unordered_map<llvm::Value *, std::unordered_map<llvm::Type*, llvm::Value *>> equiv_cache;
-  std::unordered_map<llvm::Value *, std::unordered_map<llvm::Value*, std::unordered_map<llvm::Type*, llvm::Value*>>> gep_cache;
+  std::unordered_map<llvm::Value *, std::unordered_map<llvm::Type*, llvm::Value *>> phi_cache;
+  std::unordered_map<llvm::Value *, std::unordered_map<llvm::Type*, llvm::Value *>> load_cache;
 
+  std::unordered_map<llvm::Value *, std::unordered_map<llvm::Value*, std::unordered_map<llvm::Type*, llvm::Value*>>> gep_cache;
   // Whether or not progress has been made, e.g. a new type was inferred.
   bool made_progress{false};
 
