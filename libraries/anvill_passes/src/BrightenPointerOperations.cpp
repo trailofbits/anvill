@@ -60,28 +60,67 @@ PointerLifter::PointerLifter(llvm::Function *func_, unsigned max_gas_)
 
 std::tuple<llvm::Value *, bool, bool>
 PointerLifter::createCast(llvm::Value* src, llvm::Type* dest) {
+  llvm::Instruction* src_inst = llvm::dyn_cast<llvm::Instruction>(src);
+  if (!src_inst) {
+      return {src, !CHANGED_IR, !BRIGHTEN_SUCCESS};
+  }
   // This operation has been done before, return equivalent instruction
-  auto &ptr_cast = equiv_cache[src][dest];
-  if (ptr_cast) {
-    return {ptr_cast, !CHANGED_IR, BRIGHTEN_SUCCESS};
+  //auto &ptr_cast = equiv_cache[src][dest];
+  
+  auto &eq_class = equiv_cache2[src];
+  if (!eq_class) {
+    eq_class = std::make_shared<EquivalenceClass>();
+    (*eq_class)[src_inst->getType()] = src;
+    for (auto user : src_inst->users()) {
+      // For now, they are equivalent if they are bitcast, ptrtoint, inttoptr. 
+      // adds/subs/geps of 0 could also be equivalent 
+      if (llvm::dyn_cast<llvm::BitCastInst>(user) || llvm::dyn_cast<llvm::PtrToIntInst>(user) || llvm::dyn_cast<llvm::IntToPtrInst>(user)) {
+        auto bcast = llvm::dyn_cast<llvm::Instruction>(user);
+        // If they are not in the same block, move the user after its parent. 
+        if (bcast->getParent() != src_inst->getParent()) {
+          auto func = bcast->getParent()->getParent();
+          // TODO set up once 
+          llvm::DominatorTree dt(*func);
+          // Only move if the src inst is upstream from the bcast. 
+          if (dt.dominates(src_inst->getParent(), bcast->getParent())) {
+            auto clone = bcast->clone();
+            // std::cout << "src inst: " << remill::LLVMThingToString(src_inst) << std::endl;
+            // std::cout << "cloned inst? " << remill::LLVMThingToString(bcast) << std::endl;
+            //llvm::IRBuilder<> ir(src_inst->getNextNode());
+            // bcast->eraseFromParent();
+            clone->setName(bcast->getName());
+            // src_inst->insertAfter(clone);
+            clone->insertAfter(src_inst);
+            // clone->setName(bcast->getName());
+            bcast->replaceAllUsesWith(clone);
+            bcast = clone;
+          }
+        }
+        (*eq_class)[bcast->getType()] = bcast;
+      }
+    }
+    equiv_cache2[src] = eq_class;
   }
-  // Create cast right next to source. 
-  llvm::Instruction* better_src = llvm::dyn_cast<llvm::Instruction>(src);
-  if (!better_src) {
-    return {src, !CHANGED_IR, !BRIGHTEN_SUCCESS};
+  auto &ptr_cast = (*eq_class)[dest];
+  if (!ptr_cast) {
+    // Find insert point 
+    while (auto is_phi = llvm::dyn_cast<llvm::PHINode>(src_inst)) {
+      src_inst = src_inst->getNextNode();
+    }
+    llvm::IRBuilder<> ir(src_inst->getNextNode());
+    ptr_cast = ir.CreateBitOrPointerCast(src, dest);
+    // eq_class->insert(ptr_cast->getType(), ptr_cast);
+    (*eq_class)[ptr_cast->getType()] = ptr_cast;
+
+    return {ptr_cast, CHANGED_IR, BRIGHTEN_SUCCESS}; 
   }
-  while (auto is_phi = llvm::dyn_cast<llvm::PHINode>(better_src)) {
-    better_src = better_src->getNextNode();
-  }
-  llvm::IRBuilder<> new_ir(better_src->getNextNode());
-  // this operation has not been done before, create a new cast and store it. 
-  ptr_cast = new_ir.CreateBitOrPointerCast(src, dest);
-  equiv_cache[src][dest] = ptr_cast;
-  return {ptr_cast, CHANGED_IR, BRIGHTEN_SUCCESS}; 
+  return {ptr_cast, !CHANGED_IR, BRIGHTEN_SUCCESS}; 
 }
 // TODO (Carson) other wrappers or make the above generic
 std::tuple<llvm::Value *, bool, bool> 
 PointerLifter::createGEP(llvm::Value* address, llvm::Value* offset, llvm::Type* dest_type) {
+  return {address, !CHANGED_IR, !BRIGHTEN_SUCCESS};
+
   auto &cached_gep = gep_cache[address][offset][dest_type];
   if (cached_gep) {
     // llvm::Instruction* potential_swap = llvm::dyn_cast<llvm::Instruction>(cached_gep);
@@ -111,6 +150,9 @@ PointerLifter::createGEP(llvm::Value* address, llvm::Value* offset, llvm::Type* 
     bool addr_dom = dt.dominates(candidate_addr1, candidate_addr2);
     if (addr_dom) {
       insert_point = candidate_addr2;
+    }
+    else {
+      insert_point = candidate_addr1;
     }
   }
 
@@ -185,6 +227,7 @@ PointerLifter::createPHI(llvm::PHINode* src, llvm::Type* dest) {
   }
   
   phi_cache[src][dest] = new_phi;
+  // std::cout << "Created new phi: " << remill::LLVMThingToString(new_phi) << std::endl;
   return {new_phi, overall_changed, BRIGHTEN_SUCCESS}; 
 }
 
@@ -206,6 +249,7 @@ PointerLifter::visitInferInst(llvm::Instruction *inst,
     // ourselves, then `next_inferred_val_type` will be set up to a non-null
     // pointer and we'll re-recurse on that updated value.
     while (inferred_val_type) {
+      // std::cout << "Visiting: " << remill::LLVMThingToString(inst) << std::endl;
       auto [val, v_changed, v_worked] = visit(inst);
       if (!first_ret || val->getType() == inferred_type) {
         first_ret = val;
@@ -455,7 +499,7 @@ PointerLifter::visitBitCastInst(llvm::BitCastInst &inst) {
 // Replace all uses of the original gep with the return value (final flattened)
 // Remove spurious instructions with dead code removal.
 llvm::Value *PointerLifter::flattenGEP(llvm::GetElementPtrInst *gep) {
-  // return gep;
+   return gep;
   // FIXME (Carson), delete once we can fix the TODO with getting indexed types
   // Ticket #195
   if (gep->getPointerOperandType()->getPointerElementType()->isStructTy() ||
@@ -625,7 +669,8 @@ PointerLifter::BrightenGEP_PeelLastIndex(llvm::GetElementPtrInst *gep,
 //      i. if works, update last
 std::tuple<llvm::Value *, bool, bool>
 PointerLifter::visitGetElementPtrInst(llvm::GetElementPtrInst &inst) {
-  
+      return {&inst, !CHANGED_IR, !BRIGHTEN_SUCCESS};
+
   llvm::Type *inferred_type = inferred_types[&inst];
   if (!inferred_type) {
     return {&inst, !CHANGED_IR, !BRIGHTEN_SUCCESS};
@@ -666,6 +711,8 @@ PointerLifter::visitPtrToIntInst(llvm::PtrToIntInst &inst) {
       return {operand, !CHANGED_IR, BRIGHTEN_SUCCESS};
     }
   }
+  return {&inst, !CHANGED_IR, !BRIGHTEN_SUCCESS};
+
   llvm::IRBuilder<> ir(&inst);
   auto ptr_val = inst.getOperand(0);
   auto cast_pair = createCast(ptr_val, inferred_type);
@@ -689,6 +736,8 @@ pointer
 */
 std::tuple<llvm::Value *, bool, bool>
 PointerLifter::visitIntToPtrInst(llvm::IntToPtrInst &inst) {
+// return {&inst, !CHANGED_IR, !BRIGHTEN_SUCCESS};
+
   llvm::Type *inferred_type = inferred_types[&inst];
   if (inferred_type) {
     if (auto ptr_inst = llvm::dyn_cast<llvm::Instruction>(inst.getOperand(0))) {
@@ -1136,6 +1185,8 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
   fpm.run(func);
   fpm.doFinalization();
 
+  // func.print(llvm::errs(), nullptr);
+
   made_progress = true;
   unsigned int count = 0;
   for (auto i = 0u; i < max_gas && made_progress; ++i) {
@@ -1149,6 +1200,9 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
 
     for (auto inst : worklist) {
       auto [val, changed, worked] = visit(inst);
+      if (changed) {
+        // std::cout << "CYCLE: " << count << " changed " << remill::LLVMThingToString(inst) << std::endl;
+      }
       made_progress |= changed;
     }
     worklist.clear();
@@ -1156,6 +1210,7 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
     next_inferred_types.clear();
     count++;
   }
+  std::cout << "DONE: " << count << " " << max_gas << std::endl;
   for (auto inst : to_remove) {
     if (auto rep_inst = rep_map[inst];
         rep_inst && rep_inst->getType() == inst->getType()) {
@@ -1176,6 +1231,9 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
   fpm.doInitialization();
   fpm.run(func);
   fpm.doFinalization();
+
+  std::cout << "Func name AFTER: " << func.getName().str() << std::endl;
+  func.print(llvm::errs(), nullptr);
   // func.print(llvm::errs(), nullptr);
 }
 
