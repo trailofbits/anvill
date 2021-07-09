@@ -69,7 +69,7 @@ class RemoveRemillFunctionReturns final : public llvm::FunctionPass {
   bool runOnFunction(llvm::Function &func) final;
 
  private:
-  ReturnAddressResult QueryReturnAddress(const llvm::DataLayout &dl,
+  ReturnAddressResult QueryReturnAddress(llvm::Module *module,
                                          llvm::Value *val) const;
 
   static char ID;
@@ -80,15 +80,17 @@ char RemoveRemillFunctionReturns::ID = '\0';
 
 // Returns `true` if `val` is a return address.
 ReturnAddressResult RemoveRemillFunctionReturns::QueryReturnAddress(
-    const llvm::DataLayout &dl, llvm::Value *val) const {
+    llvm::Module *module, llvm::Value *val) const {
+
+  if (IsReturnAddress(module, val)) {
+    return kFoundReturnAddress;
+  }
 
   if (auto call = llvm::dyn_cast<llvm::CallBase>(val)) {
-    if (call->getIntrinsicID() == llvm::Intrinsic::returnaddress) {
-      return kFoundReturnAddress;
-    } else if (auto func = call->getCalledFunction()) {
+    if (auto func = call->getCalledFunction()) {
       if (func->getName().startswith("__remill_read_memory_")) {
         auto addr = call->getArgOperand(1);  // Address
-        if (IsRelatedToStackPointer(dl, addr)) {
+        if (IsRelatedToStackPointer(module, addr)) {
           return kFoundSymbolicStackPointerLoad;
         } else {
           return kUnclassifiableReturnAddress;
@@ -98,26 +100,19 @@ ReturnAddressResult RemoveRemillFunctionReturns::QueryReturnAddress(
     return kUnclassifiableReturnAddress;
 
   } else if (auto li = llvm::dyn_cast<llvm::LoadInst>(val)) {
-    if (IsRelatedToStackPointer(dl, li->getPointerOperand())) {
+    if (IsRelatedToStackPointer(module, li->getPointerOperand())) {
       return kFoundSymbolicStackPointerLoad;
     } else {
       return kUnclassifiableReturnAddress;
     }
 
-  } else if (auto gv = llvm::dyn_cast<llvm::GlobalVariable>(val)) {
-    if (IsReturnAddress(gv)) {
-      return kFoundReturnAddress;
-    } else {
-      return kUnclassifiableReturnAddress;
-    }
-
   } else if (auto pti = llvm::dyn_cast<llvm::PtrToIntOperator>(val)) {
-    return QueryReturnAddress(dl, pti->getOperand(0));
+    return QueryReturnAddress(module, pti->getOperand(0));
 
   } else if (auto cast = llvm::dyn_cast<llvm::CastInst>(val)) {
-    return QueryReturnAddress(dl, cast->getOperand(0));
+    return QueryReturnAddress(module, cast->getOperand(0));
 
-  } else if (IsRelatedToStackPointer(dl, val)) {
+  } else if (IsRelatedToStackPointer(module, val)) {
     return kFoundSymbolicStackPointerLoad;
 
   // Sometimes optimizations result in really crazy looking constant expressions
@@ -139,6 +134,7 @@ ReturnAddressResult RemoveRemillFunctionReturns::QueryReturnAddress(
 // Remove a single case of a call to `__remill_function_return` where the return
 // addresses reaches the `pc` argument of the call.
 static void FoldReturnAddressMatch(llvm::CallBase *call) {
+  auto module = call->getModule();
   auto ret_addr =
       llvm::dyn_cast<llvm::Instruction>(call->getArgOperand(remill::kPCArgNum));
   auto mem_ptr = call->getArgOperand(remill::kMemoryPointerArgNum);
@@ -157,7 +153,7 @@ static void FoldReturnAddressMatch(llvm::CallBase *call) {
       ret_addr = next_ret_addr;
 
     // Call to `llvm.returnaddress`.
-    } else if (IsReturnAddress(ret_addr)) {
+    } else if (IsReturnAddress(module, ret_addr)) {
       ret_addr->eraseFromParent();
       break;
 
@@ -245,7 +241,6 @@ static void OverwriteReturnAddress(
 bool RemoveRemillFunctionReturns::runOnFunction(llvm::Function &func) {
 
   const auto module = func.getParent();
-  const auto &dl = module->getDataLayout();
   std::vector<llvm::CallBase *> matches_pattern;
   std::vector<std::pair<llvm::CallBase *, llvm::Value *>> fixups;
 
@@ -255,7 +250,7 @@ bool RemoveRemillFunctionReturns::runOnFunction(llvm::Function &func) {
           func && func->getName() == "__remill_function_return") {
         auto ret_addr = call->getArgOperand(remill::kPCArgNum)
                             ->stripPointerCastsAndAliases();
-        switch (QueryReturnAddress(dl, ret_addr)) {
+        switch (QueryReturnAddress(module, ret_addr)) {
           case kFoundReturnAddress: matches_pattern.push_back(call); break;
 
           // Do nothing if it's a symbolic stack pointer load; we're probably

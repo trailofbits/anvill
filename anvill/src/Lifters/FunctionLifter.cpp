@@ -550,7 +550,6 @@ void FunctionLifter::CallFunction(const remill::Instruction &inst,
 void FunctionLifter::VisitDirectFunctionCall(const remill::Instruction &inst,
                                              remill::Instruction *delayed_inst,
                                              llvm::BasicBlock *block) {
-
   VisitDelayedInstruction(inst, delayed_inst, block, true);
   CallFunction(inst, block);
   VisitAfterFunctionCall(inst, block);
@@ -731,12 +730,22 @@ void FunctionLifter::VisitAfterFunctionCall(const remill::Instruction &inst,
 void FunctionLifter::VisitConditionalBranch(const remill::Instruction &inst,
                                             remill::Instruction *delayed_inst,
                                             llvm::BasicBlock *block) {
+  std::stringstream taken_ss;
+  taken_ss
+      << "inst_" << std::hex << inst.pc << "_taken_"
+      << inst.branch_taken_pc;
+
+  std::stringstream not_taken_ss;
+  not_taken_ss
+      << "inst_" << std::hex << inst.pc << "_not_taken_"
+      << inst.branch_not_taken_pc;
+
   const auto lifted_func = block->getParent();
   const auto cond = remill::LoadBranchTaken(block);
   const auto taken_block =
-      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
+      llvm::BasicBlock::Create(llvm_context, taken_ss.str(), lifted_func);
   const auto not_taken_block =
-      llvm::BasicBlock::Create(llvm_context, "", lifted_func);
+      llvm::BasicBlock::Create(llvm_context, not_taken_ss.str(), lifted_func);
   llvm::BranchInst::Create(taken_block, not_taken_block, cond, block);
   VisitDelayedInstruction(inst, delayed_inst, taken_block, true);
   VisitDelayedInstruction(inst, delayed_inst, not_taken_block, false);

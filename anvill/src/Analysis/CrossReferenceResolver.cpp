@@ -400,18 +400,19 @@ CrossReferenceResolverImpl::ResolveGlobalValue(llvm::GlobalValue *gv) {
 
   ResolvedCrossReference xr = {};
 
+  auto module = gv->getParent();
   if (auto var = llvm::dyn_cast<llvm::GlobalVariable>(gv)) {
-    if (IsProgramCounter(gv)) {
+    if (IsProgramCounter(module, gv)) {
       xr.references_program_counter = true;
       xr.is_valid = true;
       return xr;
 
-    } else if (IsStackPointer(gv)) {
+    } else if (IsStackPointer(module, gv)) {
       xr.references_stack_pointer = true;
       xr.is_valid = true;
       return xr;
 
-    } else if (IsReturnAddress(gv)) {
+    } else if (IsReturnAddress(module, gv)) {
       xr.u.address = MagicReturnAddressValue();
       xr.references_return_address = true;
       xr.is_valid = true;

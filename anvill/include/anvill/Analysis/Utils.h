@@ -19,22 +19,23 @@
 
 namespace llvm {
 class DataLayout;
+class Module;
 class Value;
 }  // namespace llvm
 namespace anvill {
 
 // Returns `true` if it looks like `val` is the program counter.
-bool IsProgramCounter(llvm::Value *val);
+bool IsProgramCounter(llvm::Module *module, llvm::Value *val);
 
 // Returns `true` if it looks like `val` is the stack counter.
-bool IsStackPointer(llvm::Value *val);
+bool IsStackPointer(llvm::Module *module, llvm::Value *val);
 
 // Returns `true` if it looks like `val` is the return address.
-bool IsReturnAddress(llvm::Value *val);
+bool IsReturnAddress(llvm::Module *module, llvm::Value *val);
 
 // Returns `true` if it looks like `val` is derived from a symbolic stack
 // pointer representation.
-bool IsRelatedToStackPointer(const llvm::DataLayout &dl, llvm::Value *val);
+bool IsRelatedToStackPointer(llvm::Module *module, llvm::Value *val);
 
 // Returns `true` if `val` looks like it is backed by a definition, and thus can
 // be the aliasee of an `llvm::GlobalAlias`.

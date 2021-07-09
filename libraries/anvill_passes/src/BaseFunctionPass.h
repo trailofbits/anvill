@@ -83,7 +83,7 @@ class BaseFunctionPass : public llvm::FunctionPass {
 
   // Returns true if this instruction references the stack pointer
   static bool
-  InstructionReferencesStackPointer(const llvm::DataLayout &data_layout,
+  InstructionReferencesStackPointer(llvm::Module *module,
                                     const llvm::Instruction &instr);
 
   // Returns true if this is either a store or a load instruction
@@ -148,7 +148,7 @@ bool BaseFunctionPass<UserFunctionPass>::runOnFunction(
 
 template <typename UserFunctionPass>
 bool BaseFunctionPass<UserFunctionPass>::InstructionReferencesStackPointer(
-    const llvm::DataLayout &data_layout, const llvm::Instruction &instr) {
+    llvm::Module *module, const llvm::Instruction &instr) {
 
   auto operand_count = instr.getNumOperands();
 
@@ -156,7 +156,7 @@ bool BaseFunctionPass<UserFunctionPass>::InstructionReferencesStackPointer(
        ++operand_index) {
 
     auto operand = instr.getOperand(operand_index);
-    if (IsRelatedToStackPointer(data_layout, operand)) {
+    if (IsRelatedToStackPointer(module, operand)) {
       return true;
     }
   }

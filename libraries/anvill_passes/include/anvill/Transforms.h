@@ -222,7 +222,6 @@ CreateInstructionFolderPass(ITransformationErrorManager &error_manager);
 // and PHI nodes, followed by the select sinking pass, which pushes values down.
 llvm::FunctionPass *CreateRemoveTrivialPhisAndSelects(void);
 
-
 // The pass transforms bitcode to replace the calls to `__remill_jump` into
 // `__remill_function_return` if a value returned by `llvm.returnaddress`, or
 // casted from `__anvill_ra`, reaches to its `PC` argument.
@@ -254,5 +253,13 @@ CreateTransformRemillJumpIntrinsics(const EntityLifter &lifter);
 // This pass should only work on boolean values, and handle when those are used
 // in Branches and Selects
 llvm::FunctionPass *CreateConvertXorToCmp(void);
+
+// Removes calls to `__remill_delay_slot_begin` and `__remill_delay_slot_end`.
+// These calls surround the lifted versions of delayed instructions, to signal
+// their location in the bitcode.
+llvm::FunctionPass *CreateRemoveDelaySlotIntrinsics(void);
+
+// Removes calls to `__remill_error`.
+llvm::FunctionPass *CreateRemoveErrorIntrinsics(void);
 
 }  // namespace anvill

@@ -70,7 +70,7 @@ class TransformRemillJumpIntrinsics final : public llvm::FunctionPass {
   bool runOnFunction(llvm::Function &func) final;
 
  private:
-  ReturnAddressResult QueryReturnAddress(const llvm::DataLayout &dl,
+  ReturnAddressResult QueryReturnAddress(llvm::Module *module,
                                          llvm::Value *val) const;
 
   bool TransformJumpIntrinsic(llvm::CallBase *call);
@@ -83,14 +83,14 @@ char TransformRemillJumpIntrinsics::ID = '\0';
 
 // Returns `true` if `val` is a possible return address
 ReturnAddressResult
-TransformRemillJumpIntrinsics::QueryReturnAddress(const llvm::DataLayout &dl,
+TransformRemillJumpIntrinsics::QueryReturnAddress(llvm::Module *module,
                                                   llvm::Value *val) const {
 
-  if (IsReturnAddress(val)) {
+  if (IsReturnAddress(module, val)) {
     return kReturnAddressProgramCounter;
 
   } else if (auto pti = llvm::dyn_cast<llvm::PtrToIntOperator>(val)) {
-    return QueryReturnAddress(dl, pti->getOperand(0));
+    return QueryReturnAddress(module, pti->getOperand(0));
 
   // Sometimes optimizations result in really crazy looking constant expressions
   // related to `__anvill_ra`, full of shifts, zexts, etc. We try to detect
@@ -187,7 +187,7 @@ bool TransformRemillJumpIntrinsics::runOnFunction(llvm::Function &func) {
 
     const auto ret_addr =
         call->getArgOperand(remill::kPCArgNum)->stripPointerCastsAndAliases();
-    switch (QueryReturnAddress(dl, ret_addr)) {
+    switch (QueryReturnAddress(module, ret_addr)) {
       case kReturnAddressProgramCounter: return true;
       case kUnclassifiableProgramCounter: return false;
     }

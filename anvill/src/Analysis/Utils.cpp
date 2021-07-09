@@ -120,10 +120,10 @@ static bool IsCallRelatedToStackPointerItrinsic(llvm::CallBase *call) {
 
 // Returns `true` if it looks like `val` is derived from a symbolic stack
 // pointer representation.
-bool IsRelatedToStackPointer(const llvm::DataLayout &dl, llvm::Value *val) {
-
+bool IsRelatedToStackPointer(llvm::Module *module, llvm::Value *val) {
+  const auto &dl = module->getDataLayout();
   if (auto pti = llvm::dyn_cast<llvm::PtrToIntOperator>(val)) {
-    return IsRelatedToStackPointer(dl, pti->getOperand(0));
+    return IsRelatedToStackPointer(module, pti->getOperand(0));
 
   } else if (auto ce = llvm::dyn_cast<llvm::ConstantExpr>(val)) {
     switch (ce->getOpcode()) {
@@ -139,7 +139,7 @@ bool IsRelatedToStackPointer(const llvm::DataLayout &dl, llvm::Value *val) {
       case llvm::Instruction::Trunc:
       case llvm::Instruction::SExt:
       case llvm::Instruction::ZExt:
-        return IsRelatedToStackPointer(dl, ce->getOperand(0));
+        return IsRelatedToStackPointer(module, ce->getOperand(0));
       case llvm::Instruction::Add:
       case llvm::Instruction::Sub:
       case llvm::Instruction::Mul:
@@ -147,46 +147,46 @@ bool IsRelatedToStackPointer(const llvm::DataLayout &dl, llvm::Value *val) {
       case llvm::Instruction::Or:
       case llvm::Instruction::Xor:
       case llvm::Instruction::ICmp:
-        return IsRelatedToStackPointer(dl, ce->getOperand(0)) ||
-               IsRelatedToStackPointer(dl, ce->getOperand(1));
+        return IsRelatedToStackPointer(module, ce->getOperand(0)) ||
+               IsRelatedToStackPointer(module, ce->getOperand(1));
       case llvm::Instruction::Select:
-        return IsRelatedToStackPointer(dl, ce->getOperand(1)) ||
-               IsRelatedToStackPointer(dl, ce->getOperand(2));
+        return IsRelatedToStackPointer(module, ce->getOperand(1)) ||
+               IsRelatedToStackPointer(module, ce->getOperand(2));
       case llvm::Instruction::FCmp:
-        return IsRelatedToStackPointer(dl, ce->getOperand(0)) ||
-               IsRelatedToStackPointer(dl, ce->getOperand(1)) ||
-               IsRelatedToStackPointer(dl, ce->getOperand(2));
+        return IsRelatedToStackPointer(module, ce->getOperand(0)) ||
+               IsRelatedToStackPointer(module, ce->getOperand(1)) ||
+               IsRelatedToStackPointer(module, ce->getOperand(2));
       default: return false;
     }
 
   } else if (auto op2 = llvm::dyn_cast<llvm::BinaryOperator>(val)) {
-    return IsRelatedToStackPointer(dl, op2->getOperand(0)) ||
-           IsRelatedToStackPointer(dl, op2->getOperand(1));
+    return IsRelatedToStackPointer(module, op2->getOperand(0)) ||
+           IsRelatedToStackPointer(module, op2->getOperand(1));
 
   } else if (auto op1 = llvm::dyn_cast<llvm::UnaryOperator>(val)) {
-    return IsRelatedToStackPointer(dl, op1->getOperand(0));
+    return IsRelatedToStackPointer(module, op1->getOperand(0));
 
   } else if (auto sel = llvm::dyn_cast<llvm::SelectInst>(val)) {
-    return IsRelatedToStackPointer(dl, sel->getTrueValue()) ||
-           IsRelatedToStackPointer(dl, sel->getFalseValue());
+    return IsRelatedToStackPointer(module, sel->getTrueValue()) ||
+           IsRelatedToStackPointer(module, sel->getFalseValue());
 
   } else if (auto val2 = val->stripPointerCastsAndAliases();
              val2 && val2 != val) {
-    return IsRelatedToStackPointer(dl, val2);
+    return IsRelatedToStackPointer(module, val2);
 
   } else {
     llvm::APInt ap(dl.getPointerSizeInBits(0), 0);
     if (auto val3 = val->stripAndAccumulateConstantOffsets(dl, ap, true);
         val3 && val3 != val) {
-      return IsRelatedToStackPointer(dl, val3);
+      return IsRelatedToStackPointer(module, val3);
     } else {
-      return IsStackPointer(val);
+      return IsStackPointer(module, val);
     }
   }
 }
 
 // Returns `true` if it looks like `val` is the stack counter.
-bool IsStackPointer(llvm::Value *val) {
+bool IsStackPointer(llvm::Module *module, llvm::Value *val) {
   if (auto gv = llvm::dyn_cast<llvm::GlobalVariable>(val)) {
     return gv->getName() == kSymbolicSPName;
 
@@ -202,7 +202,7 @@ bool IsStackPointer(llvm::Value *val) {
 }
 
 // Returns `true` if it looks like `val` is the program counter.
-bool IsProgramCounter(llvm::Value *val) {
+bool IsProgramCounter(llvm::Module *, llvm::Value *val) {
   if (auto gv = llvm::dyn_cast<llvm::GlobalVariable>(val)) {
     return gv->getName() == kSymbolicPCName;
 
@@ -215,8 +215,28 @@ bool IsProgramCounter(llvm::Value *val) {
   }
 }
 
+static bool IsAcceptableReturnAddressDisplacement(
+    llvm::Module *module, llvm::Constant *v) {
+  auto ci = llvm::dyn_cast<llvm::ConstantInt>(v);
+  if (!ci) {
+    return false;
+  }
+
+  auto disp = ci->getZExtValue();
+
+  llvm::Triple triple(module->getTargetTriple());
+  switch (triple.getArch()) {
+    case llvm::Triple::ArchType::sparc:
+    case llvm::Triple::ArchType::sparcel:
+    case llvm::Triple::ArchType::sparcv9:
+      return disp == 0u || disp == 4u || disp == 8u;
+    default:
+      return disp == 0;
+  }
+}
+
 // Returns `true` if it looks like `val` is the return address.
-bool IsReturnAddress(llvm::Value *val) {
+bool IsReturnAddress(llvm::Module *module, llvm::Value *val) {
   const auto addressofreturnaddress = [](llvm::CallBase *call) -> bool {
     return call &&
            call->getIntrinsicID() == llvm::Intrinsic::addressofreturnaddress;
@@ -238,6 +258,38 @@ bool IsReturnAddress(llvm::Value *val) {
   } else if (auto li = llvm::dyn_cast<llvm::LoadInst>(val)) {
     return addressofreturnaddress(
         llvm::dyn_cast<llvm::CallBase>(li->getPointerOperand()));
+
+  } else if (auto pti = llvm::dyn_cast<llvm::PtrToIntOperator>(val)) {
+    return IsReturnAddress(module, pti->getOperand(0));
+
+  } else if (auto itp = llvm::dyn_cast<llvm::IntToPtrInst>(val)) {
+    return IsReturnAddress(module, itp->getOperand(0));
+
+  } else if (auto bc = llvm::dyn_cast<llvm::BitCastOperator>(val)) {
+    return IsReturnAddress(module, bc->getOperand(0));
+
+  } else if (auto ce = llvm::dyn_cast<llvm::ConstantExpr>(val)) {
+    switch (ce->getOpcode()) {
+      case llvm::Instruction::Add: {
+        llvm::Constant *o0 = ce->getOperand(0);
+        llvm::Constant *o1 = ce->getOperand(1);
+        if (IsReturnAddress(module, o0)) {
+          return IsAcceptableReturnAddressDisplacement(module, o1);
+        } else if (IsReturnAddress(module, o1)) {
+          return IsAcceptableReturnAddressDisplacement(module, o0);
+
+        } else {
+          return false;
+        }
+      }
+
+      case llvm::Instruction::IntToPtr:
+        return IsReturnAddress(module, ce->getOperand(0));
+
+      default:
+        return false;
+    }
+
   } else {
     return false;
   }

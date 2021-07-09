@@ -6,7 +6,7 @@ ANVILL_PYTHON="python3 -m anvill"
 ANVILL_DECOMPILE="anvill-decompile-json-11.0"
 function Help
 {
-  echo "Run Anvill on AnghaBech-1K"
+  echo "Run Anvill on AMP Challenge Binaries"
   echo ""
   echo "Options:"
   echo "  --python-cmd <cmd>        The anvill Python command to invoke. Default ${ANVILL_PYTHON}"
@@ -17,10 +17,9 @@ function Help
 function check_test
 {
     local input_json=${1}
-    #if [[ ! -f $(pwd)/results/${arch}/python/stats.json ]]
     if [[ ! -f ${1} ]]
     then
-        echo "[!] Could not find python results for: ${arch}"
+        echo "[!] Could not find python results for: ${dir}"
         return 1
     fi
 
@@ -30,7 +29,8 @@ function check_test
 		python3 -c "import stats,sys; s=stats.Stats(); s.load_json(sys.stdin); print(s.get_fail_count())" \
         < ${input_json})
 
-    echo "[!] There were [${fail_msg}] failures on ${arch}:"
+    # Always output this, even if zero failures. Good to show ignored test results.
+    echo "[!] There were [${fail_msg}] failures on ${dir}:"
     PYTHONPATH=${SRC_DIR}/libraries/lifting-tools-ci/tool_run_scripts \
         python3 -c "import stats,sys; s=stats.Stats(); s.load_json(sys.stdin); s.print_fails()" \
         < ${input_json}
@@ -102,11 +102,12 @@ then
 fi
 
 # create a working directory
-mkdir -p angha-test-1k
-pushd angha-test-1k
+rm -rf amp-challenge-bins
+mkdir -p amp-challenge-bins
+pushd amp-challenge-bins
 
-# fetch the test set: 1K binaries (per arch)
-${SRC_DIR}/libraries/lifting-tools-ci/datasets/fetch_anghabench.sh --run-size 1k --binaries
+# fetch the test set: AMP Challenge Binaries
+TOB_AMP_PASSPHRASE=${TOB_AMP_PASSPHRASE} ${SRC_DIR}/libraries/lifting-tools-ci/datasets/fetch_amp_challengebins.sh
 # extract it
 for tarfile in *.tar.xz
 do
@@ -114,27 +115,27 @@ do
 done
 
 FAILED="no"
-for arch in $(ls -1 binaries/)
+for dir in challenge-binaries
 do
-    echo "[+] Testing architecture ${arch}"
+    echo "[+] Testing ${dir}"
     ${SRC_DIR}/libraries/lifting-tools-ci/tool_run_scripts/anvill.py \
         --anvill-python "${ANVILL_PYTHON}" \
         --anvill-decompile "${ANVILL_DECOMPILE}" \
-        --input-dir "$(pwd)/binaries/${arch}" \
-        --output-dir "$(pwd)/results/${arch}" \
-        --run-name "anvill-live-ci-${arch}" \
-        --test-options "${SRC_DIR}/ci/angha_1k_test_settings.json" \
+        --input-dir "$(pwd)/${dir}" \
+        --output-dir "$(pwd)/results/${dir}" \
+        --run-name "anvill-live-ci-amp-bins" \
+        --test-options "${SRC_DIR}/ci/challenge_bins_test_settings.json" \
         --dump-stats
 
 
-    if ! check_test "$(pwd)/results/${arch}/python/stats.json"
+    if ! check_test "$(pwd)/results/${dir}/python/stats.json"
     then
-        echo "[!] Failed python spec generation for ${arch}"
+        echo "[!] Failed python spec generation for ${dir}"
         FAILED="yes"
     fi
-    if ! check_test "$(pwd)/results/${arch}/decompile/stats.json"
+    if ! check_test "$(pwd)/results/${dir}/decompile/stats.json"
     then
-        echo "[!] Failed decompilation from spec for ${arch}"
+        echo "[!] Failed decompilation from spec for ${dir}"
         FAILED="yes"
     fi
 

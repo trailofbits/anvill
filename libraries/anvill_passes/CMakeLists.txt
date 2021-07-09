@@ -13,6 +13,8 @@ add_library(anvill_passes STATIC
   src/LowerRemillUndefinedIntrinsics.cpp
   src/LowerTypeHintIntrinsics.cpp
   src/RemoveCompilerBarriers.cpp
+  src/RemoveDelaySlotIntrinsics.cpp
+  src/RemoveErrorIntrinsics.cpp
   src/RemoveRemillFunctionReturns.cpp
   src/RemoveTrivialPhisAndSelects.cpp
   src/RemoveUnusedFPClassificationCalls.cpp

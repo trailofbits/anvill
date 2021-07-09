@@ -69,13 +69,12 @@ TEST_SUITE("BaseFunctionPass") {
 
     // Attempt to run the InstructionReferencesStackPointer method on every
     // instruction
-    auto data_layout = module->getDataLayout();
 
     std::size_t reference_count{};
 
     for (auto &instruction : llvm::instructions(*function)) {
       if (BaseFunctionPass<std::monostate>::InstructionReferencesStackPointer(
-              data_layout, instruction)) {
+              module.get(), instruction)) {
         ++reference_count;
       }
     }

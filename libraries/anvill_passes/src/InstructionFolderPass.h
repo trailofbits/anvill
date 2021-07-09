@@ -19,6 +19,8 @@
 
 #include "BaseFunctionPass.h"
 
+#include <llvm/IR/Dominators.h>
+
 namespace anvill {
 
 class InstructionFolderPass final
@@ -42,8 +44,8 @@ class InstructionFolderPass final
   // `BinaryOperator` and `GetElementPtrInst` instructions
   //
   // Returns true if the function was changed
-  static bool FoldSelectInstruction(InstructionList &output,
-                                    llvm::Instruction *instr);
+  bool FoldSelectInstruction(InstructionList &output,
+                             llvm::Instruction *instr);
 
   // A single incoming value + basic_block for a PHI node
   struct IncomingValue final {
@@ -73,7 +75,7 @@ class InstructionFolderPass final
   // `BinaryOperator` and `GetElementPtrInst` instructions
   //
   // Returns true if the function was changed
-  static bool FoldPHINode(InstructionList &output, llvm::Instruction *instr);
+  bool FoldPHINode(InstructionList &output, llvm::Instruction *instr);
 
   // Before we can fold a `GetElementPtrInst` instruction, we have to
   // collect the indices. This function will do the work, and return
@@ -101,7 +103,7 @@ class InstructionFolderPass final
                                      llvm::Value *false_value,
                                      llvm::Instruction *binary_op_instr);
 
-  static bool FoldPHINodeWithBinaryOp(llvm::Instruction *&output,
+  bool FoldPHINodeWithBinaryOp(llvm::Instruction *&output,
                                       llvm::Instruction *phi_node,
                                       IncomingValueList &incoming_values,
                                       llvm::Instruction *binary_op_instr);
@@ -126,10 +128,10 @@ class InstructionFolderPass final
                                      llvm::Value *false_value,
                                      llvm::Instruction *cast_instr);
 
-  static bool FoldPHINodeWithCastInst(llvm::Instruction *&output,
-                                      llvm::Instruction *phi_node,
-                                      IncomingValueList &incoming_values,
-                                      llvm::Instruction *cast_instr);
+  bool FoldPHINodeWithCastInst(llvm::Instruction *&output,
+                               llvm::Instruction *phi_node,
+                               IncomingValueList &incoming_values,
+                               llvm::Instruction *cast_instr);
 
   // Folders for
   //   `SelectInst` + `GetElementPtrInst`
@@ -150,10 +152,12 @@ class InstructionFolderPass final
                         llvm::Value *true_value, llvm::Value *false_value,
                         llvm::Instruction *gep_instr);
 
-  static bool FoldPHINodeWithGEPInst(llvm::Instruction *&output,
+  bool FoldPHINodeWithGEPInst(llvm::Instruction *&output,
                                      llvm::Instruction *phi_node,
                                      IncomingValueList &incoming_values,
                                      llvm::Instruction *cast_instr);
+
+  std::unique_ptr<llvm::DominatorTree> dt;
 };
 
 }  // namespace anvill

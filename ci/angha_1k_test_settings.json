@@ -2,6 +2,12 @@
     "tests.ignore": [
         "x86/SoftEtherVPN/src/See/extr_memory_t.h_SW_LONG_AT",
         "amd64/SoftEtherVPN/src/See/extr_memory_t.h_SW_LONG_AT",
-        "armv7/SoftEtherVPN/src/See/extr_memory_t.h_SW_LONG_AT"
+        "armv7/SoftEtherVPN/src/See/extr_memory_t.h_SW_LONG_AT",
+        "amd64/python/success/reactos/drivers/filesystems/ext2/src/extr_linux.c_wait_queue_create.elf/output.json",
+        "amd64/python/success/linux/drivers/net/wireless/intel/iwlwifi/mvm/extr_rxmq.c_iwl_mvm_check_pn.elf/output.json",
+        "arm64/python/success/mruby/src/extr_variable.c_iv_size.elf/output.json",
+        "x86/python/success/sumatrapdf/ext/libwebp/src/enc/extr_picture_psnr_enc.c_AccumulateLSIM.elf/output.json",
+        "x86/python/success/postgres/src/backend/access/nbtree/extr_nbtsort.c__bt_parallel_heapscan.elf/output.json",
+        "x86/python/success/reactos/drivers/filesystems/ext2/src/extr_linux.c_wait_queue_create.elf/output.json"
     ]
 }

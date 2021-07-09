@@ -103,13 +103,12 @@ RecoverStackFrameInformation::EnumerateStackPointerUsages(
   StackPointerRegisterUsages output;
 
   auto module = function.getParent();
-  auto data_layout = module->getDataLayout();
 
   for (auto &basic_block : function) {
     for (auto &instr : basic_block) {
       for (auto i = 0u, num_ops = instr.getNumOperands(); i < num_ops; ++i) {
         auto &use = instr.getOperandUse(i);
-        if (auto val = use.get(); IsRelatedToStackPointer(data_layout, val)) {
+        if (auto val = use.get(); IsRelatedToStackPointer(module, val)) {
           output.emplace_back(&use);
         }
       }

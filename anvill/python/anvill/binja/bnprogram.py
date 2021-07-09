@@ -148,6 +148,7 @@ class BNProgram(Program):
 
         variable = self._bv.get_data_var_at(function_start)
         func = BNFunction(variable, arch, function_start, [], [], func_type, True)
+        DEBUG(f"Created a new function from address: [{func.name()}] at 0x{func.address():x} with 0 arguments")
         return func
 
     def _get_function_parameters(self, bn_func):
@@ -165,6 +166,7 @@ class BNProgram(Program):
             self._arch, bn_func, bn_func.calling_convention
         )
 
+        DEBUG(f"Looking at function parameters for {bn_func.name} with {len(bn_func.parameter_vars)} parameters.")
         try:
             for var in bn_func.parameter_vars:
                 source_type = var.source_type
@@ -195,16 +197,13 @@ class BNProgram(Program):
                         or storage_reg_name in calling_conv.float_arg_reg
                     ):
                         raise InvalidParameterException(
-                            "Invalid parameters for function at {:x}: {}".format(
-                                bn_func.start, bn_func.name
-                            )
+                            f"Invalid parameters for function at {bn_func.start:x}: {bn_func.name}. "
+                            f"The bad storage register was: {storage_reg_name}."
                         )
 
                     if isinstance(arg_type, VoidType):
                         raise InvalidParameterException(
-                            "Void type parameter for function at {:x}: {}".format(
-                                bn_func.start, bn_func.name
-                            )
+                            f"Void type parameter for function at {fn_func.start:x}: {bn_func.name}"
                         )
 
                     loc = Location()
@@ -226,16 +225,21 @@ class BNProgram(Program):
             DEBUG(e)
             return []
 
-    def get_function_impl(self, address):
-        """Given an architecture and an address, return a `Function` instance or
-        raise an `InvalidFunctionException` exception."""
-        arch = self._arch
-
+    def function_from_addr(self, address):
         bn_func = self._bv.get_function_at(address)
         if not bn_func:
             func_contains = self._bv.get_functions_containing(address)
             if func_contains and len(func_contains):
                 bn_func = func_contains[0]
+
+        return bn_func
+
+    def get_function_impl(self, address):
+        """Given an architecture and an address, return a `Function` instance or
+        raise an `InvalidFunctionException` exception."""
+        arch = self._arch
+
+        bn_func = self.function_from_addr(address)
 
         # A function symbol may be identified as variable by binja.
         if not bn_func:
@@ -263,6 +267,7 @@ class BNProgram(Program):
                 ret_list.append(loc)
 
         func = BNFunction(bn_func, arch, address, param_list, ret_list, func_type)
+        DEBUG(f"Created a new function from address: [{func.name()}] at 0x{func.address():x} with {len(param_list)} arguments")
         return func
 
     def get_symbols_impl(self, address):
@@ -337,7 +342,7 @@ class BNProgram(Program):
                         function_thunk.name == caller_function.name
                         or function_thunk.name == caller_function.name[1:]
                     ):
-                        print(
+                        DEBUG(
                             "anvill: Redirecting the user {:x} of thunk {} at {:x} to {:x}".format(
                                 caller_function.start,
                                 function_thunk.name,
@@ -366,7 +371,7 @@ class BNProgram(Program):
                             caller.address, [redirection_dest], True
                         )
 
-                        print(
+                        DEBUG(
                             "anvill: Adding target list {:x} -> [{:x}, complete=True] for {}".format(
                                 caller.address, redirection_dest, function_thunk.name
                             )
@@ -383,11 +388,11 @@ class BNProgram(Program):
                                 jump_addr, [redirection_dest], True
                             )
 
-                            print(
-                                "anvill: Adding target list {:x} -> [{:x}, complete=True] for {}".format(
-                                    jump_addr, redirection_dest, function_thunk.name
-                                )
-                            )
+                            DEBUG(
+                                    "anvill: Adding target list {:x} -> [{:x}, complete=True] for {}".format(
+                                        jump_addr, redirection_dest, function_thunk.name
+                                        )
+                                    )
 
         # Now check whether we successfully redirected all thunks
         for function_thunk in function_thunk_list:

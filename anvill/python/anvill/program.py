@@ -60,7 +60,17 @@ class Program(ABC):
                 if old_len < len(syms):
                     yield name
 
+    @abstractmethod
+    def function_from_addr(self, ea: int):
+        ...
+
     def get_function(self, ea: int) -> Optional[Function]:
+        bn_func = self.function_from_addr(ea)
+
+        # If this address is already in a function, then
+        # check if we processed it already
+        if bn_func:
+            ea = bn_func.start
         if ea in self._func_defs:
             assert ea not in self._func_decls
             return self._func_defs[ea]

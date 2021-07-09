@@ -1,0 +1,13 @@
+{
+    "timeout.seconds": "400",
+    "tests.ignore": [
+        "challenge-3_amd64_program_go_patched.elf/output.json",
+        "challenge-3_amd64_program_go.elf/output.json",
+        "challenge-3_x86_program_go_patched.elf/output.json",
+        "challenge-3_x86_program_go.elf/output.json",
+        "challenge-3_arm64_program_go_patched.elf/output.json",
+        "challenge-3_arm64_program_go.elf/output.json",
+        "challenge-3_armv7_program_go_patched.elf/output.json",
+        "challenge-3_armv7_program_go.elf/output.json"
+    ]
+}

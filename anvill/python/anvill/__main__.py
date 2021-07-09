@@ -24,6 +24,7 @@ import platform
 import binaryninja as bn
 
 from .util import config_logger
+from .util import DEBUG
 from .binja import get_program
 
 
@@ -108,6 +109,7 @@ def main():
     if ep is None:
         for f in bv.functions:
             ea = f.start
+            DEBUG(f"Looking at binja found function at: {ea:x}")
             p.add_function_definition(ea, args.refs_as_defs)
     elif isinstance(ep, int):
         p.add_function_definition(ep, args.refs_as_defs)

@@ -331,6 +331,17 @@ jobs:
         run: |
           python3 -m anvill --help
 
+      - name: Run Integration Tests (AMP Challenge Binaries)
+        shell: bash
+        working-directory: ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill
+        run: |
+          python3 -m pip install -r libraries/lifting-tools-ci/requirements.txt
+          scripts/test-amp-challenge-bins.sh \
+            --python-cmd "python3 -m anvill" \
+            --decompile-cmd "anvill-decompile-json-${{ matrix.llvm }}.0"
+        env:
+          TOB_AMP_PASSPHRASE: ${{secrets.TOB_AMP_PASSPHRASE}}
+
       - name: Run Integration Tests (AnghaBench 1K)
         shell: bash
         working-directory: ${{ steps.build_paths.outputs.REL_SOURCE }}/anvill

@@ -41,13 +41,14 @@ namespace {
 //  - PHINode: kPHINodeFolderMap
 //
 
-using InstructionFolder = bool (*)(InstructionFolderPass::InstructionList &,
-                                   llvm::Instruction *);
+using InstructionFolder =
+    bool (InstructionFolderPass::*)(InstructionFolderPass::InstructionList &,
+                                    llvm::Instruction *);
 
 // clang-format off
 const std::unordered_map<std::uint32_t, InstructionFolder> kInstructionFolderMap = {
-  { llvm::Instruction::Select, InstructionFolderPass::FoldSelectInstruction },
-  { llvm::Instruction::PHI, InstructionFolderPass::FoldPHINode },
+  { llvm::Instruction::Select, &InstructionFolderPass::FoldSelectInstruction },
+  { llvm::Instruction::PHI, &InstructionFolderPass::FoldPHINode },
 };
 
 // clang-format on
@@ -103,42 +104,42 @@ const std::unordered_map<std::uint32_t, SelectInstructionFolder> kSelectInstruct
 
 // Case handlers for `PHINode` instructions
 using PHINodeInstructionFolder =
-    bool (*)(llvm::Instruction *&output, llvm::Instruction *,
+    bool (InstructionFolderPass::*)(llvm::Instruction *&output, llvm::Instruction *,
              InstructionFolderPass::IncomingValueList &, llvm::Instruction *);
 
 // clang-format off
 const std::unordered_map<std::uint32_t, PHINodeInstructionFolder> kPHINodeFolderMap = {
 
   // Binary operators
-  { llvm::Instruction::Add, InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::FAdd, InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::Sub, InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::FSub, InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::Mul, InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::FMul, InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::UDiv, InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::SDiv, InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::FDiv, InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::URem, InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::SRem, InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::FRem, InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::Shl, InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::LShr, InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::AShr, InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::And, InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::Or, InstructionFolderPass::FoldPHINodeWithBinaryOp },
-  { llvm::Instruction::Xor, InstructionFolderPass::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::Add, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::FAdd, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::Sub, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::FSub, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::Mul, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::FMul, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::UDiv, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::SDiv, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::FDiv, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::URem, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::SRem, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::FRem, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::Shl, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::LShr, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::AShr, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::And, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::Or, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
+  { llvm::Instruction::Xor, &InstructionFolderPass::FoldPHINodeWithBinaryOp },
 
   // Cast operators
-  { llvm::Instruction::Trunc, InstructionFolderPass::FoldPHINodeWithCastInst },
-  { llvm::Instruction::ZExt, InstructionFolderPass::FoldPHINodeWithCastInst },
-  { llvm::Instruction::SExt, InstructionFolderPass::FoldPHINodeWithCastInst },
-  { llvm::Instruction::FPToUI, InstructionFolderPass::FoldPHINodeWithCastInst },
-  { llvm::Instruction::FPToSI, InstructionFolderPass::FoldPHINodeWithCastInst },
-  { llvm::Instruction::UIToFP, InstructionFolderPass::FoldPHINodeWithCastInst },
-  { llvm::Instruction::SIToFP, InstructionFolderPass::FoldPHINodeWithCastInst },
-  { llvm::Instruction::FPTrunc, InstructionFolderPass::FoldPHINodeWithCastInst },
-  { llvm::Instruction::FPExt, InstructionFolderPass::FoldPHINodeWithCastInst },
+  { llvm::Instruction::Trunc, &InstructionFolderPass::FoldPHINodeWithCastInst },
+  { llvm::Instruction::ZExt, &InstructionFolderPass::FoldPHINodeWithCastInst },
+  { llvm::Instruction::SExt, &InstructionFolderPass::FoldPHINodeWithCastInst },
+  { llvm::Instruction::FPToUI, &InstructionFolderPass::FoldPHINodeWithCastInst },
+  { llvm::Instruction::FPToSI, &InstructionFolderPass::FoldPHINodeWithCastInst },
+  { llvm::Instruction::UIToFP, &InstructionFolderPass::FoldPHINodeWithCastInst },
+  { llvm::Instruction::SIToFP, &InstructionFolderPass::FoldPHINodeWithCastInst },
+  { llvm::Instruction::FPTrunc, &InstructionFolderPass::FoldPHINodeWithCastInst },
+  { llvm::Instruction::FPExt, &InstructionFolderPass::FoldPHINodeWithCastInst },
 
 
   // NOTE(akshayk): A phi node folding with cast instructions like IntToPtr
@@ -146,13 +147,13 @@ const std::unordered_map<std::uint32_t, PHINodeInstructionFolder> kPHINodeFolder
   //                the folding instruction bounce between each other. Disable
   //                them in the map and revisit when we have the fix.
 #if 0
-  { llvm::Instruction::PtrToInt, InstructionFolderPass::FoldPHINodeWithCastInst },
-  { llvm::Instruction::IntToPtr, InstructionFolderPass::FoldPHINodeWithCastInst },
-  { llvm::Instruction::BitCast, InstructionFolderPass::FoldPHINodeWithCastInst },
+  { llvm::Instruction::PtrToInt, &InstructionFolderPass::FoldPHINodeWithCastInst },
+  { llvm::Instruction::IntToPtr, &InstructionFolderPass::FoldPHINodeWithCastInst },
+  { llvm::Instruction::BitCast, &InstructionFolderPass::FoldPHINodeWithCastInst },
 #endif
 
   // Memory operators
-  { llvm::Instruction::GetElementPtr, InstructionFolderPass::FoldPHINodeWithGEPInst },
+  { llvm::Instruction::GetElementPtr, &InstructionFolderPass::FoldPHINodeWithGEPInst },
 };
 
 // clang-format on
@@ -173,6 +174,8 @@ bool InstructionFolderPass::Run(llvm::Function &function) {
   if (function.isDeclaration()) {
     return false;
   }
+
+  dt.reset(new llvm::DominatorTree(function));
 
   // Create an initial queue of possible candidates
   auto next_worklist =
@@ -203,8 +206,8 @@ bool InstructionFolderPass::Run(llvm::Function &function) {
       // keep `instr` alive for now
       auto instr_folder_it = kInstructionFolderMap.find(instr->getOpcode());
       if (instr_folder_it != kInstructionFolderMap.end()) {
-        const auto &instr_folder = instr_folder_it->second;
-        if (instr_folder(next_worklist, instr)) {
+        const auto instr_folder = instr_folder_it->second;
+        if ((this->*instr_folder)(next_worklist, instr)) {
           function_changed = true;
         }
       }
@@ -354,9 +357,9 @@ bool InstructionFolderPass::FoldPHINode(
       continue;
     }
 
-    const auto &instr_folder = instr_folder_it->second;
-    if (!instr_folder(repl.replacement_instr, instr, incoming_value_list,
-                      repl.original_instr)) {
+    const auto instr_folder = instr_folder_it->second;
+    if (!(this->*instr_folder)(repl.replacement_instr, instr,
+                               incoming_value_list, repl.original_instr)) {
       continue;
     }
 
@@ -651,27 +654,106 @@ bool InstructionFolderPass::FoldPHINodeWithGEPInst(
     return false;
   }
 
-  const auto base_ptr = gep_instr->getOperand(0);
-
-  // If the GEP pointer is computed in the same block as the
-  // PHI then it implies that the PHI dominates the base pointer, and if
-  // so, we can't actually move where this GEP is.
-  if (auto base_ptr_instr = llvm::dyn_cast<llvm::Instruction>(base_ptr);
-      base_ptr_instr && base_ptr_instr->getParent() == phi_node->getParent()) {
-    return false;
-
   // If the GEP instruction is in a different block than the PHI node then
   // we can't replace the GEP with a PHI of a bunch of GEPs because then
   // we can't prove that this new PHI dominates all uses of the GEP.
-  } else if (gep_instr->getParent() != phi_node->getParent()) {
+  llvm::BasicBlock * const curr_block = phi_node->getParent();
+  if (gep_instr->getParent() != curr_block) {
     return false;
+  }
+
+  const auto base_ptr = gep_instr->getOperand(0);
+
+  std::unordered_map<llvm::Value *,
+                     std::unordered_map<llvm::BasicBlock *, llvm::Value *>>
+      value_map;
+
+  for (llvm::Use &op : gep_instr->operands()) {
+    auto v = op.get();
+    auto cv = llvm::dyn_cast<llvm::Constant>(v);
+    auto av = llvm::dyn_cast<llvm::Argument>(v);
+
+    // Map the constants/arguments as being available in all predecessor blocks.
+    if (cv || av) {
+      auto &vals = value_map[v];
+      for (auto &incoming_val : incoming_values) {
+        vals[incoming_val.basic_block] = v;
+      }
+      continue;
+    }
+
+    // Check the dominator tree.
+    if (auto iv = llvm::dyn_cast<llvm::Instruction>(v)) {
+      if (iv->getParent() == curr_block) {
+        continue;  // Don't bother checking.
+      }
+
+      auto all_dominated = true;
+      for (auto &incoming_val : incoming_values) {
+        if (!dt->dominates(iv, incoming_val.basic_block->getTerminator())) {
+          all_dominated = false;
+          break;
+        }
+      }
+
+      // If the base pointer/index of this GEP dominates all terminators of
+      // the incoming blocks of this PHI, then we can safely use the value in
+      // all predecessor blocks just before the terminator.
+      if (all_dominated) {
+        auto &vals = value_map[v];
+        for (auto &incoming_val : incoming_values) {
+          vals[incoming_val.basic_block] = v;
+        }
+      }
+    }
+  }
+
+  // The dominator tree analysis above will fail for PHI nodes in this block.
+  // It's possible that a GEP node is of the form:
+  //
+  //      %base = phi [base1, pred1], [base2, pred2]
+  //      %index = phi [index1, pred1], [index2, pred2]
+  //      %gep = gep %base, 0, %index
+  //
+  // In this case, we want our value map to discover that `index` has a mapped
+  // value for each predecessor block, specifically, `index1` and `index2`.
+  for (auto &inst : *curr_block) {
+    if (auto phi_in_block = llvm::dyn_cast<llvm::PHINode>(&inst)) {
+      auto &vals = value_map[phi_in_block];
+      auto num_incoming_blocks = phi_in_block->getNumIncomingValues();
+      for (auto i = 0u; i < num_incoming_blocks; ++i) {
+        auto iv = phi_in_block->getIncomingValue(i);
+        auto ib = phi_in_block->getIncomingBlock(i);
+        vals[ib] = iv;
+      }
+    } else {
+      break;
+    }
+  }
+
+  // Now check that we can hoist this GEP out. This requires that we have
+  // something in the value map for all operands of the GEP.
+  for (llvm::Use &op : gep_instr->operands()) {
+    llvm::Value * const v = op.get();
+    if (value_map.find(v) == value_map.end()) {
+      return false;
+    }
   }
 
   // Go through each incoming value and move the `GetElementPtrInst`
   // instruction on each incoming basic block
   IncomingValueList new_incoming_values;
 
+  std::vector<llvm::Value *> mapped_index_list;
+  mapped_index_list.reserve(index_list.size());
+
   for (auto &incoming_value : incoming_values) {
+
+    // Apply the value map to the index list.
+    mapped_index_list.clear();
+    for (auto iv : index_list) {
+      mapped_index_list.push_back(value_map[iv][incoming_value.basic_block]);
+    }
 
     // Set the builder inside the incoming block
     llvm::IRBuilder<> builder(incoming_value.basic_block->getTerminator());
@@ -679,7 +761,8 @@ bool InstructionFolderPass::FoldPHINodeWithGEPInst(
     IncomingValue new_incoming_value;
     new_incoming_value.basic_block = incoming_value.basic_block;
     new_incoming_value.value =
-        builder.CreateGEP(base_ptr, index_list);
+        builder.CreateGEP(value_map[base_ptr][incoming_value.basic_block],
+                          mapped_index_list);
 
     new_incoming_values.push_back(std::move(new_incoming_value));
   }
