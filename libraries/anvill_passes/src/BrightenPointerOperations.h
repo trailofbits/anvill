@@ -115,11 +115,8 @@ class PointerLifter
   // TODO (Carson) Merge these together somehow? 
   using EquivalenceClass = std::unordered_map<llvm::Type* , llvm::Value *>;
   std::unordered_map<llvm::Value *, std::shared_ptr<EquivalenceClass>> equiv_cache2;
-
-  std::unordered_map<llvm::Value *, std::unordered_map<llvm::Type*, llvm::Value *>> equiv_cache;
   std::unordered_map<llvm::Value *, std::unordered_map<llvm::Type*, llvm::Value *>> phi_cache;
   std::unordered_map<llvm::Value *, std::unordered_map<llvm::Type*, llvm::Value *>> load_cache;
-
   std::unordered_map<llvm::Value *, std::unordered_map<llvm::Value*, std::unordered_map<llvm::Type*, llvm::Value*>>> gep_cache;
   // Whether or not progress has been made, e.g. a new type was inferred.
   bool made_progress{false};
