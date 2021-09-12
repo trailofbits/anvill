@@ -21,10 +21,10 @@
 #include <anvill/ITransformationErrorManager.h>
 #include <anvill/Lifters/Options.h>
 #include <anvill/Lifters/ValueLifter.h>
+#include <llvm/IR/PassManager.h>
 
 namespace llvm {
 class Function;
-class FunctionPass;
 }  // namespace llvm
 namespace anvill {
 
@@ -55,14 +55,14 @@ class EntityLifter;
 //
 // When this happens, we're better able to fold cross-references at the targets
 // of conditional branches.
-llvm::FunctionPass *CreateSinkSelectionsIntoBranchTargets(
-    ITransformationErrorManager &error_manager);
+void AddSinkSelectionsIntoBranchTargets(
+    llvm::FunctionPassManager &fpm, ITransformationErrorManager &error_manager);
 
 // Remill semantics sometimes contain compiler barriers (empty inline assembly
 // statements), especially related to floating point code (i.e. preventing
 // re-ordering of floating point operations so that we can capture the flags).
 // This pass eliminates those empty inline assembly statements.
-llvm::FunctionPass *CreateRemoveCompilerBarriers(void);
+void AddRemoveCompilerBarriers(llvm::FunctionPassManager &fpm);
 
 // Analyze `func` and determine if the function stores the return value of
 // the `llvm.returnaddress` intrinsic into an `alloca` (presumed to be the
@@ -85,8 +85,8 @@ llvm::FunctionPass *CreateRemoveCompilerBarriers(void);
 // frame. This approach is very convenient, but comes at the cost of having
 // to do this particular transformation in order to recover more typical stack
 // frame structures.
-llvm::FunctionPass *CreateSplitStackFrameAtReturnAddress(
-    ITransformationErrorManager &error_manager);
+void AddSplitStackFrameAtReturnAddress(
+    llvm::FunctionPassManager &fpm, ITransformationErrorManager &error_manager);
 
 // Remove unused calls to floating point classification functions. Calls to
 // these functions are present in a bunch of FPU-related instruction semantics
@@ -99,11 +99,11 @@ llvm::FunctionPass *CreateSplitStackFrameAtReturnAddress(
 // NOTE(pag): This pass must be applied before any kind of renaming of lifted
 //            functions is performed, so that we don't accidentally remove
 //            calls to classification functions present in the target binary.
-llvm::FunctionPass *CreateRemoveUnusedFPClassificationCalls(void);
+void AddRemoveUnusedFPClassificationCalls(llvm::FunctionPassManager &fpm);
 
 // Lowers the `__remill_read_memory_NN`, `__remill_write_memory_NN`, and the
 // various atomic read-modify-write variants into LLVM loads and stores.
-llvm::FunctionPass *CreateLowerRemillMemoryAccessIntrinsics(void);
+void AddLowerRemillMemoryAccessIntrinsics(llvm::FunctionPassManager &fpm);
 
 // Type information from prior lifting efforts, or from front-end tools
 // (e.g. Binary Ninja) is plumbed through the system by way of calls to // intrinsic functions such as `__anvill_type<blah>`. These function calls
@@ -114,7 +114,7 @@ llvm::FunctionPass *CreateLowerRemillMemoryAccessIntrinsics(void);
 //
 // These function calls need to be removed/lowered into `inttoptr` or `bitcast`
 // instructions.
-llvm::FunctionPass *CreateLowerTypeHintIntrinsics(void);
+void AddLowerTypeHintIntrinsics(llvm::FunctionPassManager &fpm);
 
 // Anvill-lifted bitcode operates at a very low level, swapping between integer
 // and pointer representations. It is typically for just-lifted bitcode to
@@ -134,7 +134,8 @@ llvm::FunctionPass *CreateLowerTypeHintIntrinsics(void);
 //
 // This function attempts to apply a battery of pattern-based transforms to
 // brighten integer operations into pointer operations.
-llvm::FunctionPass *CreateBrightenPointerOperations(unsigned max_gas = 250);
+void AddBrightenPointerOperations(llvm::FunctionPassManager &fpm,
+                                  unsigned max_gas = 250);
 
 // Transforms the bitcode to eliminate calls to `__remill_function_return`,
 // where appropriate. This will not succeed for all architectures, but is
@@ -163,8 +164,8 @@ llvm::FunctionPass *CreateBrightenPointerOperations(unsigned max_gas = 250);
 //
 // NOTE(pag): This pass should be applied as late as possible, as the call to
 //            `__remill_function_return` depends upon the memory pointer.
-llvm::FunctionPass *
-CreateRemoveRemillFunctionReturns(const EntityLifter &lifter);
+void AddRemoveRemillFunctionReturns(llvm::FunctionPassManager &fpm,
+                                    const EntityLifter &lifter);
 
 // This function pass makes use of the `__anvill_sp` usages to create an
 // `llvm::StructType` that acts as a stack frame. This initial stack frame
@@ -175,9 +176,9 @@ CreateRemoveRemillFunctionReturns(const EntityLifter &lifter);
 // to eliminate the stack frame, then to enable splitting of the stack from
 // into components (see `CreateSplitStackFrameAtReturnAddress`) such that
 // SROA can apply to the arguments and return address components.
-llvm::FunctionPass *
-CreateRecoverStackFrameInformation(ITransformationErrorManager &error_manager,
-                                   const LifterOptions &options);
+void AddRecoverStackFrameInformation(llvm::FunctionPassManager &fpm,
+                                     ITransformationErrorManager &error_manager,
+                                     const LifterOptions &options);
 
 // Anvill-lifted code is full of references to constant expressions related
 // to `__anvill_pc`. These constant expressions exist to "taint" values as
@@ -189,9 +190,9 @@ CreateRecoverStackFrameInformation(ITransformationErrorManager &error_manager,
 // other entitities. We say opportunistic because that pass is not guaranteed
 // to replace all such references, and will in fact leave references around
 // for later passes to benefit from.
-llvm::FunctionPass *
-CreateRecoverEntityUseInformation(ITransformationErrorManager &error_manager,
-                                  const EntityLifter &lifter);
+void AddRecoverEntityUseInformation(llvm::FunctionPassManager &fpm,
+                                    ITransformationErrorManager &error_manager,
+                                    const EntityLifter &lifter);
 
 // Some machine code instructions explicitly introduce undefined values /
 // behavior. Often, this is a result of the CPUs of different steppings of
@@ -208,19 +209,19 @@ CreateRecoverEntityUseInformation(ITransformationErrorManager &error_manager,
 //
 // This pass exists to do the lowering to `undef` values, and should be run
 // as late as possible.
-llvm::FunctionPass *CreateLowerRemillUndefinedIntrinsics(void);
+void AddLowerRemillUndefinedIntrinsics(llvm::FunctionPassManager &fpm);
 
 // This function pass will attempt to fold the following instruction
 // combinations:
 // {SelectInst, PHINode}/{BinaryOperator, CastInst, GetElementPtrInst}
-llvm::FunctionPass *
-CreateInstructionFolderPass(ITransformationErrorManager &error_manager);
+void AddInstructionFolderPass(llvm::FunctionPassManager &fpm,
+                              ITransformationErrorManager &error_manager);
 
 // Removes trivial PHI and select nodes. These are PHI and select nodes whose
 // incoming values or true/false values match. This can happen as a result of
 // the instruction folding pass that hoists and folds values up through selects
 // and PHI nodes, followed by the select sinking pass, which pushes values down.
-llvm::FunctionPass *CreateRemoveTrivialPhisAndSelects(void);
+void AddRemoveTrivialPhisAndSelects(llvm::FunctionPassManager &fpm);
 
 // The pass transforms bitcode to replace the calls to `__remill_jump` into
 // `__remill_function_return` if a value returned by `llvm.returnaddress`, or
@@ -235,8 +236,8 @@ llvm::FunctionPass *CreateRemoveTrivialPhisAndSelects(void);
 
 // NOTE: The pass should be run as late as possible in the list but before
 // `RemoveRemillFunctionReturns` transform
-llvm::FunctionPass *
-CreateTransformRemillJumpIntrinsics(const EntityLifter &lifter);
+void AddTransformRemillJumpIntrinsics(llvm::FunctionPassManager &fpm,
+                                      const EntityLifter &lifter);
 
 // Finds values in the form of:
 // %cmp = icmp eq val1, val2
@@ -252,14 +253,14 @@ CreateTransformRemillJumpIntrinsics(const EntityLifter &lifter);
 // with xors is more difficult to analyze and for a human to read
 // This pass should only work on boolean values, and handle when those are used
 // in Branches and Selects
-llvm::FunctionPass *CreateConvertXorToCmp(void);
+void AddConvertXorToCmp(llvm::FunctionPassManager &fpm);
 
 // Removes calls to `__remill_delay_slot_begin` and `__remill_delay_slot_end`.
 // These calls surround the lifted versions of delayed instructions, to signal
 // their location in the bitcode.
-llvm::FunctionPass *CreateRemoveDelaySlotIntrinsics(void);
+void AddRemoveDelaySlotIntrinsics(llvm::FunctionPassManager &fpm);
 
 // Removes calls to `__remill_error`.
-llvm::FunctionPass *CreateRemoveErrorIntrinsics(void);
+void AddRemoveErrorIntrinsics(llvm::FunctionPassManager &fpm);
 
 }  // namespace anvill

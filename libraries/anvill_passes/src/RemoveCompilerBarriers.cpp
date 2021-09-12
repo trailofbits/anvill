@@ -25,20 +25,17 @@
 namespace anvill {
 namespace {
 
-class RemoveCompilerBarriers final : public llvm::FunctionPass {
+class RemoveCompilerBarriers final
+    : public llvm::PassInfoMixin<RemoveCompilerBarriers> {
  public:
-  RemoveCompilerBarriers(void) : llvm::FunctionPass(ID) {}
-
-  bool runOnFunction(llvm::Function &func) final;
-
- private:
-  static char ID;
+  llvm::PreservedAnalyses run(llvm::Function &func,
+                              llvm::FunctionAnalysisManager &fam);
 };
 
-char RemoveCompilerBarriers::ID = '\0';
-
 // Try to lower remill memory access intrinsics.
-bool RemoveCompilerBarriers::runOnFunction(llvm::Function &func) {
+llvm::PreservedAnalyses
+RemoveCompilerBarriers::run(llvm::Function &func,
+                            llvm::FunctionAnalysisManager &fam) {
   std::vector<llvm::CallBase *> to_remove;
 
   for (llvm::BasicBlock &block : func) {
@@ -91,7 +88,8 @@ bool RemoveCompilerBarriers::runOnFunction(llvm::Function &func) {
     call_inst->eraseFromParent();
   }
 
-  return !to_remove.empty();
+  return !to_remove.empty() ? llvm::PreservedAnalyses::none()
+                            : llvm::PreservedAnalyses::all();
 }
 
 }  // namespace
@@ -100,8 +98,8 @@ bool RemoveCompilerBarriers::runOnFunction(llvm::Function &func) {
 // statements), especially related to floating point code (i.e. preventing
 // re-ordering of floating point operations so that we can capture the flags).
 // This pass eliminates those empty inline assembly statements.
-llvm::FunctionPass *CreateRemoveCompilerBarriers(void) {
-  return new RemoveCompilerBarriers;
+void AddRemoveCompilerBarriers(llvm::FunctionPassManager &fpm) {
+  fpm.addPass(RemoveCompilerBarriers());
 }
 
 }  // namespace anvill

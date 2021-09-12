@@ -21,7 +21,7 @@
 #include <llvm/IR/InstVisitor.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
-#include <llvm/Pass.h>
+#include <llvm/IR/PassManager.h>
 
 #include <algorithm>
 #include <string>
@@ -44,14 +44,14 @@ namespace anvill {
 
 class CrossReferenceResolver;
 
-class PointerLifterPass final : public llvm::FunctionPass {
+class PointerLifterPass final : public llvm::PassInfoMixin<PointerLifterPass> {
  public:
   explicit PointerLifterPass(unsigned max_gas_);
 
-  bool runOnFunction(llvm::Function &f) final;
+  llvm::PreservedAnalyses run(llvm::Function &f,
+                              llvm::FunctionAnalysisManager &fam);
 
  private:
-  static char ID;
   const unsigned max_gas;
 };
 
@@ -77,7 +77,7 @@ class PointerLifter
   std::pair<llvm::Value *, bool> visitReturnInst(llvm::ReturnInst& inst);
   std::pair<llvm::Value *, bool> visitStoreInst(llvm::StoreInst& store);
   std::pair<llvm::Value *, bool> visitAllocaInst(llvm::AllocaInst& alloca);
-  
+
   std::pair<llvm::Value *, bool> visitSExtInst(llvm::SExtInst& inst);
   std::pair<llvm::Value *, bool> visitZExtInst(llvm::ZExtInst& inst);
 
@@ -100,7 +100,7 @@ class PointerLifter
                                  llvm::Value *offset, llvm::Type *t) const;
 
   // Driver method
-  void LiftFunction(llvm::Function &func);
+  void LiftFunction(llvm::Function &func, llvm::FunctionAnalysisManager &fam);
 
  private:
   // Maximum number of iterations that `LiftFunction` is allowed to perform.

@@ -19,6 +19,7 @@
 
 #include <llvm/IR/Verifier.h>
 #include <llvm/IRReader/IRReader.h>
+#include <llvm/Passes/PassBuilder.h>
 #include <llvm/Support/SourceMgr.h>
 
 #include <iostream>
@@ -81,17 +82,19 @@ std::unique_ptr<llvm::Module> LoadTestData(llvm::LLVMContext &context,
   return llvm_module;
 }
 
-bool RunFunctionPass(llvm::Module *module, llvm::FunctionPass *function_pass) {
-  llvm::legacy::FunctionPassManager pass_manager(module);
-  pass_manager.add(function_pass);
-
-  pass_manager.doInitialization();
+bool RunFunctionPass(
+    llvm::Module *module,
+    std::function<void(llvm::FunctionPassManager &)> add_function_pass) {
+  llvm::PassBuilder pass_builder;
+  llvm::FunctionPassManager fpm;
+  llvm::FunctionAnalysisManager fam;
+  pass_builder.registerFunctionAnalyses(fam);
+  add_function_pass(fpm);
 
   for (auto &function : *module) {
-    pass_manager.run(function);
+    fpm.run(function, fam);
   }
 
-  pass_manager.doFinalization();
   return VerifyModule(module);
 }
 

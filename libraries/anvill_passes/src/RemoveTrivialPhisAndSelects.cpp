@@ -30,19 +30,16 @@
 namespace anvill {
 namespace {
 
-class RemoveTrivialPhisAndSelects final : public llvm::FunctionPass {
+class RemoveTrivialPhisAndSelects final
+    : public llvm::PassInfoMixin<RemoveTrivialPhisAndSelects> {
  public:
-  RemoveTrivialPhisAndSelects(void) : llvm::FunctionPass(ID) {}
-
-  bool runOnFunction(llvm::Function &func) final;
-
- private:
-  static char ID;
+  llvm::PreservedAnalyses run(llvm::Function &func,
+                              llvm::FunctionAnalysisManager &fam);
 };
 
-char RemoveTrivialPhisAndSelects::ID = '\0';
-
-bool RemoveTrivialPhisAndSelects::runOnFunction(llvm::Function &func) {
+llvm::PreservedAnalyses
+RemoveTrivialPhisAndSelects::run(llvm::Function &func,
+                                 llvm::FunctionAnalysisManager &fam) {
 
   std::unordered_set<llvm::Instruction *> remove;
   std::vector<llvm::Instruction *> work_list;
@@ -116,7 +113,8 @@ bool RemoveTrivialPhisAndSelects::runOnFunction(llvm::Function &func) {
     }
   }
 
-  return changed;
+  return changed ? llvm::PreservedAnalyses::none()
+                 : llvm::PreservedAnalyses::all();
 }
 
 }  // namespace
@@ -125,8 +123,8 @@ bool RemoveTrivialPhisAndSelects::runOnFunction(llvm::Function &func) {
 // incoming values or true/false values match. This can happen as a result of
 // the instruction folding pass that hoists and folds values up through selects
 // and PHI nodes, followed by the select sinking pass, which pushes values down.
-llvm::FunctionPass *CreateRemoveTrivialPhisAndSelects(void) {
-  return new RemoveTrivialPhisAndSelects;
+void AddRemoveTrivialPhisAndSelects(llvm::FunctionPassManager &fpm) {
+  fpm.addPass(RemoveTrivialPhisAndSelects());
 }
 
 }  // namespace anvill

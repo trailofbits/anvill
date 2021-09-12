@@ -28,20 +28,17 @@
 namespace anvill {
 namespace {
 
-class RemoveUnusedFPClassificationCalls final : public llvm::FunctionPass {
+class RemoveUnusedFPClassificationCalls final
+    : public llvm::PassInfoMixin<RemoveUnusedFPClassificationCalls> {
  public:
-  RemoveUnusedFPClassificationCalls(void) : llvm::FunctionPass(ID) {}
-
-  bool runOnFunction(llvm::Function &func) final;
-
- private:
-  static char ID;
+  llvm::PreservedAnalyses run(llvm::Function &func,
+                              llvm::FunctionAnalysisManager &fam);
 };
 
-char RemoveUnusedFPClassificationCalls::ID = '\0';
-
 // Try to remove unused floating point classification function calls.
-bool RemoveUnusedFPClassificationCalls::runOnFunction(llvm::Function &func) {
+llvm::PreservedAnalyses
+RemoveUnusedFPClassificationCalls::run(llvm::Function &func,
+                                       llvm::FunctionAnalysisManager &fam) {
   auto calls = FindFunctionCalls(func, [](llvm::CallBase *call) -> bool {
     const auto func = call->getCalledFunction();
     if (!func) {
@@ -61,7 +58,7 @@ bool RemoveUnusedFPClassificationCalls::runOnFunction(llvm::Function &func) {
     }
   }
 
-  return ret;
+  return ret ? llvm::PreservedAnalyses::none() : llvm::PreservedAnalyses::all();
 }
 
 }  // namespace
@@ -77,8 +74,8 @@ bool RemoveUnusedFPClassificationCalls::runOnFunction(llvm::Function &func) {
 // NOTE(pag): This pass must be applied before any kind of renaming of lifted
 //            functions is performed, so that we don't accidentally remove
 //            calls to classification functions present in the target binary.
-llvm::FunctionPass *CreateRemoveUnusedFPClassificationCalls(void) {
-  return new RemoveUnusedFPClassificationCalls;
+void AddRemoveUnusedFPClassificationCalls(llvm::FunctionPassManager &fpm) {
+  fpm.addPass(RemoveUnusedFPClassificationCalls());
 }
 
 }  // namespace anvill

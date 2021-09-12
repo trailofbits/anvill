@@ -22,27 +22,23 @@
 #include <llvm/IR/InstIterator.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
-#include <llvm/Pass.h>
+#include <llvm/IR/PassManager.h>
 
 #include <vector>
 
 namespace anvill {
 namespace {
 
-class LowerTypeHintIntrinsics final : public llvm::FunctionPass {
+class LowerTypeHintIntrinsics final
+    : public llvm::PassInfoMixin<LowerTypeHintIntrinsics> {
  public:
-  LowerTypeHintIntrinsics(void)
-      : llvm::FunctionPass(ID) {}
-
-  bool runOnFunction(llvm::Function &func) override;
-
- private:
-  static char ID;
+  llvm::PreservedAnalyses run(llvm::Function &func,
+                              llvm::FunctionAnalysisManager &fam);
 };
 
-char LowerTypeHintIntrinsics::ID = '\0';
-
-bool LowerTypeHintIntrinsics::runOnFunction(llvm::Function &func) {
+llvm::PreservedAnalyses
+LowerTypeHintIntrinsics::run(llvm::Function &func,
+                             llvm::FunctionAnalysisManager &fam) {
   std::vector<llvm::CallInst *> calls;
 
   for (auto &inst : llvm::instructions(func)) {
@@ -71,7 +67,8 @@ bool LowerTypeHintIntrinsics::runOnFunction(llvm::Function &func) {
     }
   }
 
-  return changed;
+  return changed ? llvm::PreservedAnalyses::none()
+                 : llvm::PreservedAnalyses::all();
 }
 
 }  // namespace
@@ -86,8 +83,8 @@ bool LowerTypeHintIntrinsics::runOnFunction(llvm::Function &func) {
 //
 // These function calls need to be removed/lowered into `inttoptr` or `bitcast`
 // instructions.
-llvm::FunctionPass *CreateLowerTypeHintIntrinsics(void) {
-  return new LowerTypeHintIntrinsics;
+void AddLowerTypeHintIntrinsics(llvm::FunctionPassManager &fpm) {
+  fpm.addPass(LowerTypeHintIntrinsics());
 }
 
 }  // namespace anvill

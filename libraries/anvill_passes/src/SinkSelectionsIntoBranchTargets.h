@@ -77,18 +77,16 @@ class SinkSelectionsIntoBranchTargets final
   static void SinkSelectInstructions(const FunctionAnalysis &analysis);
 
   // Creates a new SinkSelectionsIntoBranchTargets object
-  static SinkSelectionsIntoBranchTargets *
-  Create(ITransformationErrorManager &error_manager);
+  static void Add(llvm::FunctionPassManager &fpm,
+                  ITransformationErrorManager &error_manager);
 
   // Function pass entry point
-  bool Run(llvm::Function &function);
+  llvm::PreservedAnalyses Run(llvm::Function &function);
 
-  // Returns the pass name
-  virtual llvm::StringRef getPassName(void) const override;
+  virtual ~SinkSelectionsIntoBranchTargets(void) override = default;
 
  private:
   SinkSelectionsIntoBranchTargets(ITransformationErrorManager &error_manager);
-  virtual ~SinkSelectionsIntoBranchTargets(void) override = default;
 };
 
 }  // namespace anvill

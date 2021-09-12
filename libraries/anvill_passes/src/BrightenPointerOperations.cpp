@@ -20,9 +20,10 @@
 #include <anvill/Transforms.h>
 #include <glog/logging.h>
 #include <llvm/ADT/SmallVector.h>
-#include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
+#include <llvm/IR/PassManager.h>
 #include <llvm/Passes/PassBuilder.h>
+#include <llvm/Transforms/Scalar/DCE.h>
 #include <remill/BC/Compat/ScalarTransforms.h>
 #include <remill/BC/Util.h>
 
@@ -33,23 +34,20 @@
 
 namespace anvill {
 
-char PointerLifterPass::ID = '\0';
+PointerLifterPass::PointerLifterPass(unsigned max_gas_) : max_gas(max_gas_) {}
 
-PointerLifterPass::PointerLifterPass(unsigned max_gas_)
-    : FunctionPass(ID),
-      max_gas(max_gas_) {}
-
-bool PointerLifterPass::runOnFunction(llvm::Function &f) {
+llvm::PreservedAnalyses
+PointerLifterPass::run(llvm::Function &f, llvm::FunctionAnalysisManager &fam) {
 
   // f.print(llvm::errs(), nullptr);
   PointerLifter lifter(&f, max_gas);
-  lifter.LiftFunction(f);
+  lifter.LiftFunction(f, fam);
 
   // f.print(llvm::errs(), nullptr);
   // TODO (Carson) have an analysis function which determines modifications
   // Then use lift function to run those modifications
-  // Can return true/false depending on what was modified
-  return true;
+  // Can return all/none depending on what was modified
+  return llvm::PreservedAnalyses::none();
 }
 
 PointerLifter::PointerLifter(llvm::Function *func_, unsigned max_gas_)
@@ -1013,7 +1011,8 @@ updated values are added into the next_worklist. Pointer lifting for a function
 is done when we reach a fixed point, when the next_worklist is empty.
 */
 
-void PointerLifter::LiftFunction(llvm::Function &func) {
+void PointerLifter::LiftFunction(llvm::Function &func,
+                                 llvm::FunctionAnalysisManager &fam) {
   std::vector<llvm::Instruction *> worklist;
   std::vector<llvm::GetElementPtrInst *> gep_list;
 
@@ -1035,11 +1034,9 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
     }
   }
   // Deadcode remove stale geps.
-  llvm::legacy::FunctionPassManager fpm(mod);
-  fpm.add(llvm::createDeadCodeEliminationPass());
-  fpm.doInitialization();
-  fpm.run(func);
-  fpm.doFinalization();
+  llvm::FunctionPassManager fpm;
+  fpm.addPass(llvm::DCEPass());
+  fpm.run(func, fam);
 
   made_progress = true;
   for (auto i = 0u; i < max_gas && made_progress; ++i) {
@@ -1092,9 +1089,7 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
     next_inferred_types.clear();
     to_remove.clear();
 
-    fpm.doInitialization();
-    fpm.run(func);
-    fpm.doFinalization();
+    fpm.run(func, fam);
   }
 }
 
@@ -1116,8 +1111,9 @@ void PointerLifter::LiftFunction(llvm::Function &func) {
 //
 // This function attempts to apply a battery of pattern-based transforms to
 // brighten integer operations into pointer operations.
-llvm::FunctionPass *CreateBrightenPointerOperations(unsigned max_gas) {
-  return new PointerLifterPass(max_gas ? max_gas : 250u);
+void AddBrightenPointerOperations(llvm::FunctionPassManager &fpm,
+                                  unsigned max_gas) {
+  fpm.addPass(PointerLifterPass(max_gas ? max_gas : 250u));
 }
 
 }  // namespace anvill

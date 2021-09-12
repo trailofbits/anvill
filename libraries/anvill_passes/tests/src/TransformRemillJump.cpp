@@ -44,7 +44,9 @@ TEST_SUITE("TransformRemillJump_Test0") {
     anvill::EntityLifter lifter(options, nullptr, nullptr);
 
     CHECK(RunFunctionPass(module.get(),
-                          CreateTransformRemillJumpIntrinsics(lifter)));
+                          [&lifter](llvm::FunctionPassManager &fpm) {
+                            AddTransformRemillJumpIntrinsics(fpm, lifter);
+                          }));
 
     const auto ret_func = module->getFunction("__remill_function_return");
     const auto jmp_func = module->getFunction("__remill_jump");
@@ -69,7 +71,9 @@ TEST_SUITE("TransformRemillJump_Test1") {
     anvill::EntityLifter lifter(options, nullptr, nullptr);
 
     CHECK(RunFunctionPass(module.get(),
-                          CreateTransformRemillJumpIntrinsics(lifter)));
+                          [&lifter](llvm::FunctionPassManager &fpm) {
+                            AddTransformRemillJumpIntrinsics(fpm, lifter);
+                          }));
 
     const auto ret_func = module->getFunction("__remill_function_return");
     const auto jmp_func = module->getFunction("__remill_jump");
@@ -96,7 +100,9 @@ TEST_SUITE("TransformRemillJump_ARM32_0") {
     anvill::EntityLifter lifter(options, nullptr, nullptr);
 
     CHECK(RunFunctionPass(module.get(),
-                          CreateTransformRemillJumpIntrinsics(lifter)));
+                          [&lifter](llvm::FunctionPassManager &fpm) {
+                            AddTransformRemillJumpIntrinsics(fpm, lifter);
+                          }));
 
     const auto ret_func = module->getFunction("__remill_function_return");
     const auto jmp_func = module->getFunction("__remill_jump");
@@ -123,7 +129,9 @@ TEST_SUITE("TransformRemillJump_ARM32_1") {
     anvill::EntityLifter lifter(options, nullptr, nullptr);
 
     CHECK(RunFunctionPass(module.get(),
-                          CreateTransformRemillJumpIntrinsics(lifter)));
+                          [&lifter](llvm::FunctionPassManager &fpm) {
+                            AddTransformRemillJumpIntrinsics(fpm, lifter);
+                          }));
 
     const auto ret_func = module->getFunction("__remill_function_return");
     const auto jmp_func = module->getFunction("__remill_jump");

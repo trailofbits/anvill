@@ -24,7 +24,7 @@
 #include <llvm/IR/InstIterator.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
-#include <llvm/Pass.h>
+#include <llvm/IR/PassManager.h>
 
 #include <optional>
 #include <tuple>
@@ -33,17 +33,11 @@
 namespace anvill {
 namespace {
 
-class ConvertXorToCmp final : public llvm::FunctionPass {
+class ConvertXorToCmp final : public llvm::PassInfoMixin<ConvertXorToCmp> {
  public:
-  ConvertXorToCmp(void) : llvm::FunctionPass(ID) {}
-
-  bool runOnFunction(llvm::Function &func) override;
-
- private:
-  static char ID;
+  llvm::PreservedAnalyses run(llvm::Function &func,
+                              llvm::FunctionAnalysisManager &fam);
 };
-
-char ConvertXorToCmp::ID = '\0';
 
 // If the operator (op) is between an ICmpInst and a ConstantInt,
 // return a tuple representing the ICmpInst and ConstantInt
@@ -80,7 +74,8 @@ static llvm::Value *negateCmpPredicate(llvm::ICmpInst *cmp) {
   return ir.CreateICmp(new_pred, cmp->getOperand(0), cmp->getOperand(1));
 }
 
-bool ConvertXorToCmp::runOnFunction(llvm::Function &func) {
+llvm::PreservedAnalyses
+ConvertXorToCmp::run(llvm::Function &func, llvm::FunctionAnalysisManager &fam) {
   std::vector<llvm::BinaryOperator *> xors;
 
   for (auto &inst : llvm::instructions(func)) {
@@ -228,7 +223,8 @@ bool ConvertXorToCmp::runOnFunction(llvm::Function &func) {
 
   LOG(INFO) << "ConvertXorToCmp: replaced " << replaced_items
             << " xors with negated comparisons";
-  return changed;
+  return changed ? llvm::PreservedAnalyses::none()
+                 : llvm::PreservedAnalyses::all();
 }
 
 }  // namespace
@@ -239,8 +235,8 @@ bool ConvertXorToCmp::runOnFunction(llvm::Function &func) {
 // (left !OP right)
 // this makes the output more natural for humans and computers to reason about
 // This problem comes up a fair bit due to how some instruction semantics compute carry/parity/etc bits
-llvm::FunctionPass *CreateConvertXorToCmp(void) {
-  return new ConvertXorToCmp;
+void AddConvertXorToCmp(llvm::FunctionPassManager &fpm) {
+  fpm.addPass(ConvertXorToCmp());
 }
 
 }  // namespace anvill

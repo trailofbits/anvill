@@ -165,14 +165,14 @@ InstructionFolderPass::InstructionFolderPass(
     : BaseFunctionPass(error_manager) {}
 
 
-InstructionFolderPass *
-InstructionFolderPass::Create(ITransformationErrorManager &error_manager) {
-  return new InstructionFolderPass(error_manager);
+void InstructionFolderPass::Add(llvm::FunctionPassManager &fpm,
+                                ITransformationErrorManager &error_manager) {
+  fpm.addPass(InstructionFolderPass(error_manager));
 }
 
-bool InstructionFolderPass::Run(llvm::Function &function) {
+llvm::PreservedAnalyses InstructionFolderPass::Run(llvm::Function &function) {
   if (function.isDeclaration()) {
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
 
   dt.reset(new llvm::DominatorTree(function));
@@ -225,11 +225,8 @@ bool InstructionFolderPass::Run(llvm::Function &function) {
     }
   }
 
-  return function_changed;
-}
-
-llvm::StringRef InstructionFolderPass::getPassName(void) const {
-  return llvm::StringRef("InstructionFolderPass");
+  return function_changed ? llvm::PreservedAnalyses::none()
+                          : llvm::PreservedAnalyses::all();
 }
 
 bool InstructionFolderPass::FoldSelectInstruction(
@@ -799,9 +796,9 @@ bool InstructionFolderPass::FoldPHINodeWithGEPInst(
   return true;
 }
 
-llvm::FunctionPass *
-CreateInstructionFolderPass(ITransformationErrorManager &error_manager) {
-  return InstructionFolderPass::Create(error_manager);
+void AddInstructionFolderPass(llvm::FunctionPassManager &fpm,
+                              ITransformationErrorManager &error_manager) {
+  InstructionFolderPass::Add(fpm, error_manager);
 }
 
 }  // namespace anvill

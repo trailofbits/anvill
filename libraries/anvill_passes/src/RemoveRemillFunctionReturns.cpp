@@ -62,23 +62,21 @@ enum ReturnAddressResult {
   kUnclassifiableReturnAddress
 };
 
-class RemoveRemillFunctionReturns final : public llvm::FunctionPass {
+class RemoveRemillFunctionReturns final
+    : public llvm::PassInfoMixin<RemoveRemillFunctionReturns> {
  public:
   RemoveRemillFunctionReturns(const EntityLifter &lifter_)
-      : llvm::FunctionPass(ID),
-        xref_resolver(lifter_) {}
+      : xref_resolver(lifter_) {}
 
-  bool runOnFunction(llvm::Function &func) final;
+  llvm::PreservedAnalyses run(llvm::Function &func,
+                              llvm::FunctionAnalysisManager &fam);
 
  private:
   ReturnAddressResult QueryReturnAddress(llvm::Module *module,
                                          llvm::Value *val) const;
 
-  static char ID;
   const CrossReferenceResolver xref_resolver;
 };
-
-char RemoveRemillFunctionReturns::ID = '\0';
 
 // Returns `true` if `val` is a return address.
 ReturnAddressResult RemoveRemillFunctionReturns::QueryReturnAddress(
@@ -245,7 +243,9 @@ static void OverwriteReturnAddress(
 
 // Try to identify the patterns of `__remill_function_call` that we can
 // remove.
-bool RemoveRemillFunctionReturns::runOnFunction(llvm::Function &func) {
+llvm::PreservedAnalyses
+RemoveRemillFunctionReturns::run(llvm::Function &func,
+                                 llvm::FunctionAnalysisManager &fam) {
 
   const auto module = func.getParent();
   std::vector<llvm::CallBase *> matches_pattern;
@@ -290,7 +290,7 @@ bool RemoveRemillFunctionReturns::runOnFunction(llvm::Function &func) {
     }
   }
 
-  return ret;
+  return ret ? llvm::PreservedAnalyses::none() : llvm::PreservedAnalyses::all();
 }
 
 }  // namespace
@@ -322,9 +322,9 @@ bool RemoveRemillFunctionReturns::runOnFunction(llvm::Function &func) {
 //
 // NOTE(pag): This pass should be applied as late as possible, as the call to
 //            `__remill_function_return` depends upon the memory pointer.
-llvm::FunctionPass *CreateRemoveRemillFunctionReturns(
-    const EntityLifter &lifter) {
-  return new RemoveRemillFunctionReturns(lifter);
+void AddRemoveRemillFunctionReturns(llvm::FunctionPassManager &fpm,
+                                    const EntityLifter &lifter) {
+  fpm.addPass(RemoveRemillFunctionReturns(lifter));
 }
 
 }  // namespace anvill

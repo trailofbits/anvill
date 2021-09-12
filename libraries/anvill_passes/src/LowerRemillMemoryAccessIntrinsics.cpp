@@ -28,18 +28,12 @@
 namespace anvill {
 namespace {
 
-class LowerRemillMemoryAccessIntrinsics final : public llvm::FunctionPass {
+class LowerRemillMemoryAccessIntrinsics final
+    : public llvm::PassInfoMixin<LowerRemillMemoryAccessIntrinsics> {
  public:
-  LowerRemillMemoryAccessIntrinsics(void) : llvm::FunctionPass(ID) {}
-
-  bool runOnFunction(llvm::Function &func) final;
-
- private:
-  static char ID;
+  llvm::PreservedAnalyses run(llvm::Function &func,
+                              llvm::FunctionAnalysisManager &fam);
 };
-
-char LowerRemillMemoryAccessIntrinsics::ID = '\0';
-
 
 // Lower a memory read intrinsic into a `load` instruction.
 static void ReplaceMemReadOp(llvm::CallBase *call_inst, llvm::Type *val_type) {
@@ -117,7 +111,9 @@ static bool ReplaceMemoryOp(llvm::CallBase *call) {
 }
 
 // Try to lower remill memory access intrinsics.
-bool LowerRemillMemoryAccessIntrinsics::runOnFunction(llvm::Function &func) {
+llvm::PreservedAnalyses
+LowerRemillMemoryAccessIntrinsics::run(llvm::Function &func,
+                                       llvm::FunctionAnalysisManager &fam) {
   auto calls = FindFunctionCalls(func, [](llvm::CallBase *call) -> bool {
     const auto func = call->getCalledFunction();
     if (!func) {
@@ -135,15 +131,15 @@ bool LowerRemillMemoryAccessIntrinsics::runOnFunction(llvm::Function &func) {
     ret = ReplaceMemoryOp(call) || ret;
   }
 
-  return ret;
+  return ret ? llvm::PreservedAnalyses::none() : llvm::PreservedAnalyses::all();
 }
 
 }  // namespace
 
 // Lowers the `__remill_read_memory_NN`, `__remill_write_memory_NN`, and the
 // various atomic read-modify-write variants into LLVM loads and stores.
-llvm::FunctionPass *CreateLowerRemillMemoryAccessIntrinsics(void) {
-  return new LowerRemillMemoryAccessIntrinsics;
+void AddLowerRemillMemoryAccessIntrinsics(llvm::FunctionPassManager &fpm) {
+  fpm.addPass(LowerRemillMemoryAccessIntrinsics());
 }
 
 }  // namespace anvill

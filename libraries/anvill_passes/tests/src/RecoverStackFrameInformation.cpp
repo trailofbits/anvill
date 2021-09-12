@@ -74,9 +74,12 @@ TEST_SUITE("RecoverStackFrameInformation") {
           lift_options.stack_frame_lower_padding =
               lift_options.stack_frame_higher_padding = padding_bytes / 2U;
 
-          CHECK(RunFunctionPass(module.get(),
-                                CreateRecoverStackFrameInformation(
-                                    *error_manager.get(), lift_options)));
+          CHECK(RunFunctionPass(
+              module.get(),
+              [&error_manager, &lift_options](llvm::FunctionPassManager &fpm) {
+                AddRecoverStackFrameInformation(fpm, *error_manager.get(),
+                                                lift_options);
+              }));
 
 
           for (const auto &error : error_manager->ErrorList()) {

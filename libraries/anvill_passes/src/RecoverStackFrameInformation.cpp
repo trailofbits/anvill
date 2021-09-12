@@ -27,15 +27,16 @@
 #include "Utils.h"
 
 namespace anvill {
-RecoverStackFrameInformation *
-RecoverStackFrameInformation::Create(ITransformationErrorManager &error_manager,
-                                     const LifterOptions &options) {
-  return new RecoverStackFrameInformation(error_manager, options);
+void RecoverStackFrameInformation::Add(
+    llvm::FunctionPassManager &fpm, ITransformationErrorManager &error_manager,
+    const LifterOptions &options) {
+  fpm.addPass(RecoverStackFrameInformation(error_manager, options));
 }
 
-bool RecoverStackFrameInformation::Run(llvm::Function &function) {
+llvm::PreservedAnalyses
+RecoverStackFrameInformation::Run(llvm::Function &function) {
   if (function.isDeclaration()) {
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
 
   // Analyze the stack frame first, enumerating the instructions referencing
@@ -45,12 +46,12 @@ bool RecoverStackFrameInformation::Run(llvm::Function &function) {
     EmitError(SeverityType::Error, stack_frame_analysis_res.Error(),
               "The stack frame analysis has failed");
 
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
 
   auto stack_frame_analysis = stack_frame_analysis_res.TakeValue();
   if (stack_frame_analysis.size == 0) {
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
 
   // It is now time to patch the function. This method will take the stack
@@ -65,7 +66,7 @@ bool RecoverStackFrameInformation::Run(llvm::Function &function) {
         SeverityType::Fatal, update_func_res.Error(),
         "Function transformation has failed and the stack could not be recovered");
 
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
 
   // Analyze the __anvill_sp usage again; this time, the resulting
@@ -75,7 +76,7 @@ bool RecoverStackFrameInformation::Run(llvm::Function &function) {
     EmitError(SeverityType::Fatal, second_stack_frame_uses_res.Error(),
               "The post-transformation stack frame analysis has failed");
 
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
 
   auto second_stack_frame_uses = second_stack_frame_uses_res.TakeValue();
@@ -86,11 +87,7 @@ bool RecoverStackFrameInformation::Run(llvm::Function &function) {
         "The stack frame recovery did not replace all the possible __anvill_sp uses");
   }
 
-  return true;
-}
-
-llvm::StringRef RecoverStackFrameInformation::getPassName(void) const {
-  return llvm::StringRef("RecoverStackFrameInformation");
+  return llvm::PreservedAnalyses::none();
 }
 
 Result<StackPointerRegisterUsages, StackAnalysisErrorCode>
@@ -433,10 +430,10 @@ RecoverStackFrameInformation::RecoverStackFrameInformation(
     : BaseFunctionPass(error_manager),
       options(options) {}
 
-llvm::FunctionPass *
-CreateRecoverStackFrameInformation(ITransformationErrorManager &error_manager,
-                                   const LifterOptions &options) {
-  return RecoverStackFrameInformation::Create(error_manager, options);
+void AddRecoverStackFrameInformation(llvm::FunctionPassManager &fpm,
+                                     ITransformationErrorManager &error_manager,
+                                     const LifterOptions &options) {
+  RecoverStackFrameInformation::Add(fpm, error_manager, options);
 }
 
 }  // namespace anvill

@@ -30,25 +30,22 @@
 namespace anvill {
 namespace {
 
-class RemoveErrorIntrinsics final : public llvm::FunctionPass {
+class RemoveErrorIntrinsics final
+    : public llvm::PassInfoMixin<RemoveErrorIntrinsics> {
  public:
-  RemoveErrorIntrinsics(void) : llvm::FunctionPass(ID) {}
-
-  bool runOnFunction(llvm::Function &func) final;
-
- private:
-  static char ID;
+  llvm::PreservedAnalyses run(llvm::Function &func,
+                              llvm::FunctionAnalysisManager &fam);
 };
 
-char RemoveErrorIntrinsics::ID = '\0';
-
 // Try to lower remill error intrinsics.
-bool RemoveErrorIntrinsics::runOnFunction(llvm::Function &func) {
+llvm::PreservedAnalyses
+RemoveErrorIntrinsics::run(llvm::Function &func,
+                           llvm::FunctionAnalysisManager &fam) {
   auto module = func.getParent();
   auto error = module->getFunction("__remill_error");
 
   if (!error) {
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
 
   auto calls = FindFunctionCalls(func, [=](llvm::CallBase *call) -> bool {
@@ -180,14 +177,15 @@ bool RemoveErrorIntrinsics::runOnFunction(llvm::Function &func) {
     }
   }
 
-  return !removed.empty();
+  return !removed.empty() ? llvm::PreservedAnalyses::none()
+                          : llvm::PreservedAnalyses::all();
 }
 
 }  // namespace
 
 // Removes calls to `__remill_error`.
-llvm::FunctionPass *CreateRemoveErrorIntrinsics(void) {
-  return new RemoveErrorIntrinsics;
+void AddRemoveErrorIntrinsics(llvm::FunctionPassManager &fpm) {
+  fpm.addPass(RemoveErrorIntrinsics());
 }
 
 }  // namespace anvill

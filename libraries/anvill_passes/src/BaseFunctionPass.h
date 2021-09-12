@@ -25,6 +25,7 @@
 #include <llvm/IR/InstIterator.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
+#include <llvm/IR/PassManager.h>
 #include <llvm/Pass.h>
 #include <remill/BC/Util.h>
 #include <remill/BC/Version.h>
@@ -50,10 +51,7 @@ enum class BaseFunctionPassErrorCode {
 };
 
 template <typename UserFunctionPass>
-class BaseFunctionPass : public llvm::FunctionPass {
-
-  // Function pass identifier; `&ID` needs to be unique!
-  static char ID;
+class BaseFunctionPass : public llvm::PassInfoMixin<UserFunctionPass> {
 
   // Current module.
   llvm::Module *module{nullptr};
@@ -79,7 +77,8 @@ class BaseFunctionPass : public llvm::FunctionPass {
   virtual ~BaseFunctionPass(void) = default;
 
   // Function pass entry point, called by LLVM
-  virtual bool runOnFunction(llvm::Function &function) final override;
+  llvm::PreservedAnalyses run(llvm::Function &function,
+                              llvm::FunctionAnalysisManager &fam);
 
   // Returns true if this instruction references the stack pointer
   static bool
@@ -125,17 +124,14 @@ class BaseFunctionPass : public llvm::FunctionPass {
 };
 
 template <typename UserFunctionPass>
-char BaseFunctionPass<UserFunctionPass>::ID = '\0';
-
-template <typename UserFunctionPass>
 BaseFunctionPass<UserFunctionPass>::BaseFunctionPass(
     ITransformationErrorManager &error_manager_)
-    : llvm::FunctionPass(ID),
-      error_manager(error_manager_) {}
+    : error_manager(error_manager_) {}
 
 template <typename UserFunctionPass>
-bool BaseFunctionPass<UserFunctionPass>::runOnFunction(
-    llvm::Function &function_) {
+llvm::PreservedAnalyses
+BaseFunctionPass<UserFunctionPass>::run(llvm::Function &function_,
+                                        llvm::FunctionAnalysisManager &) {
   function = &function_;
   module = function->getParent();
   original_function_ir = GetFunctionIR(*function);
@@ -223,7 +219,7 @@ void BaseFunctionPass<UserFunctionPass>::EmitError(SeverityType severity,
                                                    llvm::Instruction *instr) {
 
   TransformationError error;
-  error.pass_name = getPassName().str();
+  error.pass_name = llvm::PassInfoMixin<UserFunctionPass>::name().str();
   error.severity = severity;
   error.error_code = EnumValueToString(error_code);
   error.message = message;

@@ -28,26 +28,23 @@
 namespace anvill {
 namespace {
 
-class RemoveDelaySlotIntrinsics final : public llvm::FunctionPass {
+class RemoveDelaySlotIntrinsics final
+    : public llvm::PassInfoMixin<RemoveDelaySlotIntrinsics> {
  public:
-  RemoveDelaySlotIntrinsics(void) : llvm::FunctionPass(ID) {}
-
-  bool runOnFunction(llvm::Function &func) final;
-
- private:
-  static char ID;
+  llvm::PreservedAnalyses run(llvm::Function &func,
+                              llvm::FunctionAnalysisManager &fam);
 };
 
-char RemoveDelaySlotIntrinsics::ID = '\0';
-
 // Try to lower remill memory access intrinsics.
-bool RemoveDelaySlotIntrinsics::runOnFunction(llvm::Function &func) {
+llvm::PreservedAnalyses
+RemoveDelaySlotIntrinsics::run(llvm::Function &func,
+                               llvm::FunctionAnalysisManager &fam) {
   auto module = func.getParent();
   auto begin = module->getFunction("__remill_delay_slot_begin");
   auto end = module->getFunction("__remill_delay_slot_end");
 
   if (!begin && !end) {
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
 
   auto calls = FindFunctionCalls(func, [=](llvm::CallBase *call) -> bool {
@@ -62,14 +59,15 @@ bool RemoveDelaySlotIntrinsics::runOnFunction(llvm::Function &func) {
     call->eraseFromParent();
   }
 
-  return !calls.empty();
+  return !calls.empty() ? llvm::PreservedAnalyses::none()
+                        : llvm::PreservedAnalyses::all();
 }
 
 }  // namespace
 
 // Removes calls to `__remill_delay_slot_begin` and `__remill_delay_slot_end`.
-llvm::FunctionPass *CreateRemoveDelaySlotIntrinsics(void) {
-  return new RemoveDelaySlotIntrinsics;
+void AddRemoveDelaySlotIntrinsics(llvm::FunctionPassManager &fpm) {
+  fpm.addPass(RemoveDelaySlotIntrinsics());
 }
 
 }  // namespace anvill

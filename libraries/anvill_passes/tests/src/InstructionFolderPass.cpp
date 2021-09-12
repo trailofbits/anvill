@@ -44,7 +44,9 @@ TEST_SUITE("InstructionFolderPass") {
     auto error_manager = ITransformationErrorManager::Create();
 
     CHECK(RunFunctionPass(module.get(),
-                          CreateInstructionFolderPass(*error_manager.get())));
+                          [&error_manager](llvm::FunctionPassManager &fpm) {
+                            AddInstructionFolderPass(fpm, *error_manager.get());
+                          }));
 
     for (const auto &error : error_manager->ErrorList()) {
       CHECK_MESSAGE(false, error.description);

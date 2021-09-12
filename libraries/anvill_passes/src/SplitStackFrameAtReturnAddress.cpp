@@ -50,14 +50,16 @@ using AllocatedStackFramePartList = std::vector<AllocatedStackFramePart>;
 
 }  // namespace
 
-SplitStackFrameAtReturnAddress *SplitStackFrameAtReturnAddress::Create(
+void SplitStackFrameAtReturnAddress::Add(
+    llvm::FunctionPassManager &fpm,
     ITransformationErrorManager &error_manager) {
-  return new SplitStackFrameAtReturnAddress(error_manager);
+  fpm.addPass(SplitStackFrameAtReturnAddress(error_manager));
 }
 
-bool SplitStackFrameAtReturnAddress::Run(llvm::Function &function) {
+llvm::PreservedAnalyses
+SplitStackFrameAtReturnAddress::Run(llvm::Function &function) {
   if (function.isDeclaration()) {
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
 
   // Analyze the function first; there may be nothing to do
@@ -66,18 +68,18 @@ bool SplitStackFrameAtReturnAddress::Run(llvm::Function &function) {
     auto error = analysis_res.TakeError();
     if (error == StackFrameSplitErrorCode::StackFrameTypeNotFound ||
         error == StackFrameSplitErrorCode::StackFrameAllocaInstNotFound) {
-      return false;
+      return llvm::PreservedAnalyses::all();
     }
 
     EmitError(SeverityType::Error, analysis_res.TakeError(),
               "The function analysis has failed");
 
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
 
   auto analysis = analysis_res.TakeValue();
   if (analysis.gep_instr_list.empty()) {
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
 
   // Attempt to split the stack frame
@@ -86,7 +88,7 @@ bool SplitStackFrameAtReturnAddress::Run(llvm::Function &function) {
     EmitError(SeverityType::Fatal, split_res.TakeError(),
               "The stack frame splitting has failed");
 
-    return true;
+    return llvm::PreservedAnalyses::none();
   }
 
   // Do a second analysis, this time it should fail since we deleted
@@ -97,7 +99,7 @@ bool SplitStackFrameAtReturnAddress::Run(llvm::Function &function) {
         SeverityType::Fatal, StackFrameSplitErrorCode::TransformationFailed,
         "The second function analysis has found unreplaced stack frame usages");
 
-    return true;
+    return llvm::PreservedAnalyses::none();
   }
 
   // Make sure that the returned error is the correct one; the type should
@@ -110,14 +112,10 @@ bool SplitStackFrameAtReturnAddress::Run(llvm::Function &function) {
         SeverityType::Fatal, analysis_error,
         "Failed to verify the correctness of the function transformation");
 
-    return true;
+    return llvm::PreservedAnalyses::none();
   }
 
-  return true;
-}
-
-llvm::StringRef SplitStackFrameAtReturnAddress::getPassName(void) const {
-  return llvm::StringRef("SplitStackFrameAtReturnAddress");
+  return llvm::PreservedAnalyses::none();
 }
 
 Result<FunctionStackAnalysis, StackFrameSplitErrorCode>
@@ -547,9 +545,9 @@ SplitStackFrameAtReturnAddress::SplitStackFrameAtReturnAddress(
     ITransformationErrorManager &error_manager)
     : BaseFunctionPass(error_manager) {}
 
-llvm::FunctionPass *CreateSplitStackFrameAtReturnAddress(
+void AddSplitStackFrameAtReturnAddress(llvm::FunctionPassManager& fpm,
     ITransformationErrorManager &error_manager) {
-  return SplitStackFrameAtReturnAddress::Create(error_manager);
+    SplitStackFrameAtReturnAddress::Add(fpm, error_manager);
 }
 
 }  // namespace anvill

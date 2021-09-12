@@ -159,14 +159,11 @@ class SplitStackFrameAtReturnAddress final
 
  public:
   // Creates a new SplitStackFrameAtReturnAddress object
-  static SplitStackFrameAtReturnAddress *
-  Create(ITransformationErrorManager &error_manager);
+  static void Add(llvm::FunctionPassManager &fpm,
+                  ITransformationErrorManager &error_manager);
 
   // Function pass entry point
-  bool Run(llvm::Function &function);
-
-  // Returns the pass name
-  virtual llvm::StringRef getPassName(void) const override;
+  llvm::PreservedAnalyses Run(llvm::Function &function);
 
   // Analyses the function to determine the necessary steps to split
   // the function's stack frame
@@ -195,9 +192,10 @@ class SplitStackFrameAtReturnAddress final
   GenerateStackFramePartTypeName(const llvm::Function &function,
                                  std::size_t part_number);
 
+  virtual ~SplitStackFrameAtReturnAddress(void) override = default;
+
  private:
   SplitStackFrameAtReturnAddress(ITransformationErrorManager &error_manager);
-  virtual ~SplitStackFrameAtReturnAddress(void) override = default;
 };
 
 }  // namespace anvill

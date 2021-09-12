@@ -22,27 +22,23 @@
 #include <llvm/IR/InstIterator.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
-#include <llvm/Pass.h>
+#include <llvm/IR/PassManager.h>
 
 #include <vector>
 
 namespace anvill {
 namespace {
 
-class LowerRemillUndefinedIntrinsics final : public llvm::FunctionPass {
+class LowerRemillUndefinedIntrinsics final
+    : public llvm::PassInfoMixin<LowerRemillUndefinedIntrinsics> {
  public:
-  LowerRemillUndefinedIntrinsics(void)
-      : llvm::FunctionPass(ID) {}
-
-  bool runOnFunction(llvm::Function &func) override;
-
- private:
-  static char ID;
+  llvm::PreservedAnalyses run(llvm::Function &func,
+                              llvm::FunctionAnalysisManager &fam);
 };
 
-char LowerRemillUndefinedIntrinsics::ID = '\0';
-
-bool LowerRemillUndefinedIntrinsics::runOnFunction(llvm::Function &func) {
+llvm::PreservedAnalyses
+LowerRemillUndefinedIntrinsics::run(llvm::Function &func,
+                                    llvm::FunctionAnalysisManager &fam) {
   std::vector<llvm::CallInst *> calls;
 
   for (auto &inst : llvm::instructions(func)) {
@@ -63,7 +59,8 @@ bool LowerRemillUndefinedIntrinsics::runOnFunction(llvm::Function &func) {
     changed = true;
   }
 
-  return changed;
+  return changed ? llvm::PreservedAnalyses::none()
+                 : llvm::PreservedAnalyses::all();
 }
 
 }  // namespace
@@ -83,8 +80,8 @@ bool LowerRemillUndefinedIntrinsics::runOnFunction(llvm::Function &func) {
 //
 // This pass exists to do the lowering to `undef` values, and should be run
 // as late as possible.
-llvm::FunctionPass *CreateLowerRemillUndefinedIntrinsics(void) {
-  return new LowerRemillUndefinedIntrinsics;
+void AddLowerRemillUndefinedIntrinsics(llvm::FunctionPassManager &fpm) {
+  fpm.addPass(LowerRemillUndefinedIntrinsics());
 }
 
 }  // namespace anvill

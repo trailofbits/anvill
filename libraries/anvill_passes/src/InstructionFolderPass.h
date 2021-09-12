@@ -27,18 +27,16 @@ class InstructionFolderPass final
     : public BaseFunctionPass<InstructionFolderPass> {
  public:
   explicit InstructionFolderPass(ITransformationErrorManager &error_manager);
+  InstructionFolderPass(InstructionFolderPass &&) = default;
 
   virtual ~InstructionFolderPass(void) override = default;
 
   // Creates a new InstructionFolderPass object
-  static InstructionFolderPass *
-  Create(ITransformationErrorManager &error_manager);
+  static void Add(llvm::FunctionPassManager &fpm,
+                  ITransformationErrorManager &error_manager);
 
   // Function pass entry point
-  bool Run(llvm::Function &function);
-
-  // Returns the pass name
-  virtual llvm::StringRef getPassName(void) const override;
+  llvm::PreservedAnalyses Run(llvm::Function &function);
 
   // Folds `Select` instructions interacting with `CastInst`,
   // `BinaryOperator` and `GetElementPtrInst` instructions

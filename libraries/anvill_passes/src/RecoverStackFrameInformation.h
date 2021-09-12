@@ -89,15 +89,12 @@ class RecoverStackFrameInformation final
 
  public:
   // Creates a new RecoverStackFrameInformation object
-  static RecoverStackFrameInformation *
-  Create(ITransformationErrorManager &error_manager,
-         const LifterOptions &options);
+  static void Add(llvm::FunctionPassManager &fpm,
+                  ITransformationErrorManager &error_manager,
+                  const LifterOptions &options);
 
   // Function pass entry point
-  bool Run(llvm::Function &function);
-
-  // Returns the pass name
-  virtual llvm::StringRef getPassName(void) const override;
+  llvm::PreservedAnalyses Run(llvm::Function &function);
 
   // Enumerates all the store and load instructions that reference
   // the stack

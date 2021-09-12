@@ -69,15 +69,12 @@ class RecoverEntityUseInformation final
 
  public:
   // Creates a new RecoverStackFrameInformation object
-  static RecoverEntityUseInformation *
-  Create(ITransformationErrorManager &error_manager,
-         const EntityLifter &lifter);
+  static void Add(llvm::FunctionPassManager &fpm,
+                  ITransformationErrorManager &error_manager,
+                  const EntityLifter &lifter);
 
   // Function pass entry point
-  bool Run(llvm::Function &function);
-
-  // Returns the pass name
-  virtual llvm::StringRef getPassName(void) const override;
+  llvm::PreservedAnalyses Run(llvm::Function &function);
 
   // Enumerates some of the possible entity usages that are isolated to
   // specific instruction operand uses.

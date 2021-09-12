@@ -29,20 +29,21 @@
 
 namespace anvill {
 
-RecoverEntityUseInformation *
-RecoverEntityUseInformation::Create(ITransformationErrorManager &error_manager,
-                                    const EntityLifter &lifter) {
-  return new RecoverEntityUseInformation(error_manager, lifter);
+void RecoverEntityUseInformation::Add(
+    llvm::FunctionPassManager &fpm, ITransformationErrorManager &error_manager,
+    const EntityLifter &lifter) {
+  fpm.addPass(RecoverEntityUseInformation(error_manager, lifter));
 }
 
-bool RecoverEntityUseInformation::Run(llvm::Function &function) {
+llvm::PreservedAnalyses
+RecoverEntityUseInformation::Run(llvm::Function &function) {
   if (function.isDeclaration()) {
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
 
   auto uses = EnumeratePossibleEntityUsages(function);
   if (uses.empty()) {
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
 
   // It is now time to patch the function. This method will take the stack
@@ -55,14 +56,10 @@ bool RecoverEntityUseInformation::Run(llvm::Function &function) {
         "Function transformation has failed and there was a failure recovering "
         "an entity reference");
 
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
 
-  return true;
-}
-
-llvm::StringRef RecoverEntityUseInformation::getPassName(void) const {
-  return llvm::StringRef("RecoverEntityUseInformation");
+  return llvm::PreservedAnalyses::none();
 }
 
 EntityUsages RecoverEntityUseInformation::EnumeratePossibleEntityUsages(
@@ -250,10 +247,10 @@ RecoverEntityUseInformation::RecoverEntityUseInformation(
 // other entitities. We say opportunistic because that pass is not guaranteed
 // to replace all such references, and will in fact leave references around
 // for later passes to benefit from.
-llvm::FunctionPass *
-CreateRecoverEntityUseInformation(ITransformationErrorManager &error_manager,
-                                  const EntityLifter &lifter) {
-  return RecoverEntityUseInformation::Create(error_manager, lifter);
+void AddRecoverEntityUseInformation(llvm::FunctionPassManager &fpm,
+                                    ITransformationErrorManager &error_manager,
+                                    const EntityLifter &lifter) {
+  RecoverEntityUseInformation::Add(fpm, error_manager, lifter);
 }
 
 }  // namespace anvill

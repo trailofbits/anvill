@@ -44,9 +44,10 @@ using SelectListMap = std::unordered_map<llvm::SelectInst *, BranchList>;
 
 }  // namespace
 
-SinkSelectionsIntoBranchTargets *SinkSelectionsIntoBranchTargets::Create(
+void SinkSelectionsIntoBranchTargets::Add(
+    llvm::FunctionPassManager &fpm,
     ITransformationErrorManager &error_manager) {
-  return new SinkSelectionsIntoBranchTargets(error_manager);
+  fpm.addPass(SinkSelectionsIntoBranchTargets(error_manager));
 }
 
 SinkSelectionsIntoBranchTargets::FunctionAnalysis
@@ -154,31 +155,29 @@ void SinkSelectionsIntoBranchTargets::SinkSelectInstructions(
   }
 }
 
-bool SinkSelectionsIntoBranchTargets::Run(llvm::Function &function) {
+llvm::PreservedAnalyses
+SinkSelectionsIntoBranchTargets::Run(llvm::Function &function) {
   if (function.isDeclaration()) {
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
 
   auto function_analysis = AnalyzeFunction(function);
   if (function_analysis.replacement_list.empty()) {
-    return false;
+    return llvm::PreservedAnalyses::all();
   }
 
   SinkSelectInstructions(function_analysis);
-  return true;
-}
-
-llvm::StringRef SinkSelectionsIntoBranchTargets::getPassName(void) const {
-  return llvm::StringRef("SinkSelectionsIntoBranchTargets");
+  return llvm::PreservedAnalyses::none();
 }
 
 SinkSelectionsIntoBranchTargets::SinkSelectionsIntoBranchTargets(
     ITransformationErrorManager &error_manager)
     : BaseFunctionPass(error_manager) {}
 
-llvm::FunctionPass *CreateSinkSelectionsIntoBranchTargets(
+void AddSinkSelectionsIntoBranchTargets(
+    llvm::FunctionPassManager &fpm,
     ITransformationErrorManager &error_manager) {
-  return SinkSelectionsIntoBranchTargets::Create(error_manager);
+  SinkSelectionsIntoBranchTargets::Add(fpm, error_manager);
 }
 
 }  // namespace anvill
