@@ -442,6 +442,10 @@ static bool ParseFunction(const remill::Arch *arch, llvm::LLVMContext &context,
       decl.is_variadic = *maybe_is_variadic;
     }
 
+    if (auto maybe_has_return_address = obj->getBoolean("has_return_address")) {
+      decl.has_return_address = *maybe_has_return_address;
+    }
+
     if (auto maybe_cc = obj->getInteger("calling_convention")) {
       decl.calling_convention = static_cast<llvm::CallingConv::ID>(*maybe_cc);
     }

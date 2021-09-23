@@ -147,10 +147,8 @@ class BNProgram(Program):
         function_start = binary_reader.read64() if is_64bit else binary_reader.read32()
 
         variable = self._bv.get_data_var_at(function_start)
-        func = BNFunction(variable, arch, function_start, [], [], func_type, True)
-        DEBUG(
-            f"Created a new function from address: [{func.name()}] at 0x{func.address():x} with 0 arguments"
-        )
+        func = BNFunction(variable, arch, function_start, [], [], func_type, True, True)
+        DEBUG(f"Created a new function from address: [{func.name()}] at 0x{func.address():x} with 0 arguments")
         return func
 
     def _get_function_parameters(self, bn_func):
@@ -270,10 +268,9 @@ class BNProgram(Program):
                 loc.set_type(ret_ty)
                 ret_list.append(loc)
 
-        func = BNFunction(bn_func, arch, address, param_list, ret_list, func_type)
-        DEBUG(
-            f"Created a new function from address: [{func.name()}] at 0x{func.address():x} with {len(param_list)} arguments"
-        )
+        has_return_address = self._bv.entry_function != bn_func
+        func = BNFunction(bn_func, arch, address, param_list, ret_list, func_type, has_return_address)
+        DEBUG(f"Created a new function from address: [{func.name()}] at 0x{func.address():x} with {len(param_list)} arguments")
         return func
 
     def get_symbols_impl(self, address):

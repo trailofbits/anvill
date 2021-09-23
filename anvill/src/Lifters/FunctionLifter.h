@@ -415,7 +415,7 @@ class FunctionLifter {
   // marshalling high-level argument types into lower-level values to pass into
   // a stack-allocated `State` structure. This also involves providing initial
   // default values for registers.
-  void CallLiftedFunctionFromNativeFunction(void);
+  void CallLiftedFunctionFromNativeFunction(const FunctionDecl &decl);
 
   // In practice, lifted functions are not workable as is; we need to emulate
   // `__attribute__((flatten))`, i.e. recursively inline as much as possible, so

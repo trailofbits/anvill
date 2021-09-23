@@ -82,6 +82,9 @@ class Function(object):
     def is_noreturn(self):
         return False
 
+    def has_return_address(self):
+        return True
+
     def is_external(self):
         return False
 
@@ -102,6 +105,8 @@ class Function(object):
             proto["is_variadic"] = True
         if self.is_noreturn():
             proto["is_noreturn"] = True
+        if not self.has_return_address():
+            proto["has_return_address"] = False
         if self._cc:
             proto["calling_convention"] = self._cc
         if self._register_info:

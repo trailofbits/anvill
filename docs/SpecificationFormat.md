@@ -153,7 +153,7 @@ following actions:
  * Extract arguments, given that one is at the entrypoint of a function.
  * Extract one or more return values from machine state, just after a function
    call has returned.
- * Store return values into the machine state, prior to a function's return. 
+ * Store return values into the machine state, prior to a function's return.
 
 #### Address
 
@@ -257,7 +257,7 @@ state on entry to the function).
 In the below JSON, there is a parameter named `argc`, stored in the `RDI` register,
 with type `int32_t`. In this case, `int32_t` does not fully cover the space that
 can be covered by the `RDI` register, and so the low four bytes of the eight byte
-`RDI` register are used. 
+`RDI` register are used.
 
 ```json
                 {
@@ -334,6 +334,19 @@ treated identically as meaning "the function returns sometimes or always." We
 say sometimes because some functions may conditionally invoke `longjmp`, or
 conditionally throw an exception, and thus returns may not always be guaranteed.
 
+#### Return addresses
+
+If the function being specified does not have a return address (it is the
+program entrypoint), then the following must be provided.
+
+```json
+            "has_return_address": false,
+```
+
+The absence of `has_return_address`, as well as a `true` value to
+`has_return_address`, are treated identically meaning "the function has a return
+address".
+
 #### Calling convention
 
 The calling convention of a function specification should be specified. At first
@@ -371,7 +384,7 @@ list can be found [here](https://code.woboq.org/llvm/llvm/include/llvm/IR/Callin
 ### Global variables
 
 Global variables are specified in a top-level list. Like functions, global variables
-are unnamed, and uniquely identified by their addresses. 
+are unnamed, and uniquely identified by their addresses.
 
 ```json
     "variables": [

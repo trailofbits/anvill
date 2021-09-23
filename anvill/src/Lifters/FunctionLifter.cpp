@@ -1537,7 +1537,8 @@ FunctionLifter::InitializeConcreteReturnAddress(llvm::BasicBlock *block,
 // marshalling high-level argument types into lower-level values to pass into
 // a stack-allocated `State` structure. This also involves providing initial
 // default values for registers.
-void FunctionLifter::CallLiftedFunctionFromNativeFunction(void) {
+void FunctionLifter::CallLiftedFunctionFromNativeFunction(
+    const FunctionDecl &decl) {
   if (!native_func->isDeclaration()) {
     return;
   }
@@ -1545,8 +1546,8 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(void) {
   // Get a `FunctionDecl` for `native_func`, which we can use to figure out
   // how to marshal its parameters into the emulated `State` and `Memory *`
   // of Remill lifted code, and marshal out the return value, if any.
-  auto &decl = addr_to_decl[func_address];
-  if (!decl.address) {
+  auto &native_decl = addr_to_decl[func_address];
+  if (!native_decl.address) {
     auto maybe_decl = FunctionDecl::Create(*native_func, options.arch);
     if (remill::IsError(maybe_decl)) {
       LOG(ERROR) << "Unable to create FunctionDecl for "
@@ -1556,7 +1557,7 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(void) {
       return;
     }
 
-    decl = std::move(remill::GetReference(maybe_decl));
+    native_decl = std::move(remill::GetReference(maybe_decl));
   }
 
   // Create a state structure and a stack frame in the native function
@@ -1583,19 +1584,21 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(void) {
   }
 
   // Put the function's return address wherever it needs to go.
-  if (options.symbolic_return_address) {
-    mem_ptr =
-        InitializeSymbolicReturnAddress(block, mem_ptr, decl.return_address);
-  } else {
-    mem_ptr =
-        InitializeConcreteReturnAddress(block, mem_ptr, decl.return_address);
+  if (decl.has_return_address) {
+    if (options.symbolic_return_address) {
+      mem_ptr = InitializeSymbolicReturnAddress(block, mem_ptr,
+                                                native_decl.return_address);
+    } else {
+      mem_ptr = InitializeConcreteReturnAddress(block, mem_ptr,
+                                                native_decl.return_address);
+    }
   }
 
   // Store the function parameters either into the state struct
   // or into memory (likely the stack).
   auto arg_index = 0u;
   for (auto &arg : native_func->args()) {
-    const auto &param_decl = decl.params[arg_index++];
+    const auto &param_decl = native_decl.params[arg_index++];
     mem_ptr = StoreNativeValue(&arg, param_decl, intrinsics, block, state_ptr,
                                mem_ptr);
   }
@@ -1621,15 +1624,15 @@ void FunctionLifter::CallLiftedFunctionFromNativeFunction(void) {
 
   llvm::Value *ret_val = nullptr;
 
-  if (decl.returns.size() == 1) {
-    ret_val = LoadLiftedValue(decl.returns.front(), intrinsics, block,
+  if (native_decl.returns.size() == 1) {
+    ret_val = LoadLiftedValue(native_decl.returns.front(), intrinsics, block,
                               state_ptr, mem_ptr);
     ir.SetInsertPoint(block);
 
-  } else if (1 < decl.returns.size()) {
+  } else if (1 < native_decl.returns.size()) {
     ret_val = llvm::UndefValue::get(native_func->getReturnType());
     auto index = 0u;
-    for (auto &ret_decl : decl.returns) {
+    for (auto &ret_decl : native_decl.returns) {
       auto partial_ret_val =
           LoadLiftedValue(ret_decl, intrinsics, block, state_ptr, mem_ptr);
       ir.SetInsertPoint(block);
@@ -1842,7 +1845,7 @@ llvm::Function *FunctionLifter::LiftFunction(const FunctionDecl &decl) {
 
   // Fill up `native_func` with a basic block and make it call `lifted_func`.
   // This creates things like the stack-allocated `State` structure.
-  CallLiftedFunctionFromNativeFunction();
+  CallLiftedFunctionFromNativeFunction(decl);
 
   // The last stage is that we need to recursively inline all calls to semantics
   // functions into `native_func`.

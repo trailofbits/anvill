@@ -46,10 +46,12 @@ class BNFunction(Function):
         param_list,
         ret_list,
         func_type,
+        has_return_address=True,
         is_external=False,
     ):
         super(BNFunction, self).__init__(arch, address, param_list, ret_list, func_type)
         self._bn_func = None
+        self._has_return_address = has_return_address
         self._is_external = is_external
 
         # initialize bn_func if the binja object is of type `Function`
@@ -67,6 +69,9 @@ class BNFunction(Function):
         if self._bn_func != None:
             return self._bn_func.can_return.value == False
         return False
+
+    def has_return_address(self):
+        return self._has_return_address
 
     def visit(self, program, is_definition, add_refs_as_defs):
         if not is_definition:

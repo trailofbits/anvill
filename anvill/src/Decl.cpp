@@ -209,6 +209,9 @@ FunctionDecl::SerializeToJSON(const llvm::DataLayout &dl) const {
   json.insert(llvm::json::Object::KV{llvm::json::ObjectKey("is_noreturn"),
                                      this->is_noreturn});
 
+  json.insert(llvm::json::Object::KV{
+      llvm::json::ObjectKey("has_return_address"), this->has_return_address});
+
   llvm::json::Array params_json;
   for (const auto &pdecl : params) {
     llvm::json::Value v = llvm::json::Value(pdecl.SerializeToJSON(dl));
@@ -311,6 +314,7 @@ llvm::Expected<FunctionDecl> FunctionDecl::Create(llvm::Function &func,
   decl.type = func.getFunctionType();
   decl.is_variadic = func.isVarArg();
   decl.is_noreturn = func.hasFnAttribute(llvm::Attribute::NoReturn);
+  decl.has_return_address = true;
 
   // If the function calling convention is not the default llvm::CallingConv::C
   // then use it. Otherwise, get the CallingConvention from the remill::Arch
